@@ -3,12 +3,13 @@ import bmesh
 
 bl_info = {
 	"name": "Flatten Per Face",
-	"blender": (2, 80, 0),
-	"category": "Mesh",
 	"description": "Sequentially flatten selected faces in Edit Mode",
-	"version": (1, 0),
-	"location": "View3D > Mesh",
     "author": "Mox Alehin",
+	"blender": (2, 80, 0),
+	"version": (1, 0),
+	"category": "Mesh",
+    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+	"location": "View3D > Mesh",
 }
 
 class FlattenPerFace(bpy.types.Operator):

@@ -3,11 +3,12 @@ import os
 
 bl_info = {
     "name": "Mox Export",
-    "blender": (2, 80, 0),
-    "category": "Import-Export",
-    "author": "Mox Alehin",
     "description": "Export selected objects to FBX in the same directory as the .blend file",
+    "author": "Mox Alehin",
+    "blender": (2, 80, 0),
     "version": (1, 2),
+    "category": "Import-Export",
+    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
     "location": "File > Export",
 }
 

@@ -1,10 +1,11 @@
 bl_info = {
     "name": "Keep File Clean",
+    "description": "Cleans up unused data blocks on save",
     "author": "Mox Alehin",
     "version": (1, 4),
     "blender": (2, 80, 0),
-    "description": "Cleans up unused data blocks on save",
     "category": "System",
+    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
 }
 
 import bpy

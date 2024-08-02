@@ -1,9 +1,12 @@
 bl_info = {
     "name": "Multi Importer",
+    "description": "",
     "author": "Mox Alehin",
     "blender": (2, 80, 0),
-    "location": "File > Import",
+    "version": (1, 0),
     "category": "Import-Export",
+    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+    "location": "File > Import",
 }
 
 import bpy
