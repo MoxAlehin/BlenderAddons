@@ -2,52 +2,54 @@ import bpy
 import bmesh
 
 bl_info = {
-	"name": "Flatten Per Face",
-	"description": "Sequentially flatten selected faces in Edit Mode",
+    "name": "Flatten Per Face",
+    "description": "Sequentially flatten selected faces in Edit Mode",
     "author": "Mox Alehin",
-	"blender": (2, 80, 0),
-	"version": (1, 0),
-	"category": "Mesh",
+    "blender": (2, 80, 0),
+    "version": (1, 0),
+    "category": "Mesh",
     "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
-	"location": "View3D > Mesh",
+    "location": "View3D > Mesh",
 }
 
+addon_keymaps = []
+
 class FlattenPerFace(bpy.types.Operator):
-	bl_idname = "mesh.flatten_per_face"
-	bl_label = "Flatten Per Face"
-	bl_options = {'REGISTER', 'UNDO'}
-	
-	def execute(self, context):
+    bl_idname = "mesh.flatten_per_face"
+    bl_label = "Flatten Per Face"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
 
-		looptools_name = "mesh_looptools"
+        looptools_name = "looptools"
 
-		if not looptools_name in bpy.context.preferences.addons:
-			self.report({'ERROR'}, "LoopTools is NOT active")
-			return {'CANCELLED'}
+        if not any(looptools_name in addon.module for addon in bpy.context.preferences.addons.values()):
+            self.report({'ERROR'}, "LoopTools is NOT active")
+            return {'CANCELLED'}
 
-		obj = bpy.context.edit_object
-		me = obj.data
-		bm = bmesh.from_edit_mesh(me)
+        obj = bpy.context.edit_object
+        me = obj.data
+        bm = bmesh.from_edit_mesh(me)
 
-		selected_faces = []
+        selected_faces = []
 
-		for face in bm.faces:
-			if face.select:
-				selected_faces.append(face)
-				face.select = False
+        for face in bm.faces:
+            if face.select:
+                selected_faces.append(face)
+                face.select = False
 
-		for face in selected_faces:
-			face.select = True
-			bpy.ops.mesh.looptools_flatten(influence=100, lock_x=False, lock_y=False, lock_z=False, plane='best_fit', restriction='none')
-			face.select = False
-			
-		for face in selected_faces:
-			face.select = True
+        for face in selected_faces:
+            face.select = True
+            bpy.ops.mesh.looptools_flatten(influence=100, lock_x=False, lock_y=False, lock_z=False, plane='best_fit', restriction='none')
+            face.select = False
+            
+        for face in selected_faces:
+            face.select = True
 
-		bmesh.update_edit_mesh(me)
+        bmesh.update_edit_mesh(me)
 
-		self.report({'INFO'}, "Selected faces flattened separately")
-		return {'FINISHED'}
+        self.report({'INFO'}, "Selected faces flattened separately")
+        return {'FINISHED'}
 
 def menu_func(self, context):
     self.layout.operator(FlattenPerFace.bl_idname, text="Flatten Per Face")
@@ -72,4 +74,4 @@ def unregister():
     addon_keymaps.clear()
 
 if __name__ == "__main__":
-	register()
+    register()
