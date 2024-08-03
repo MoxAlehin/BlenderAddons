@@ -5,7 +5,7 @@ bl_info = {
     "blender": (2, 80, 0),
     "version": (1, 0),
     "category": "Import-Export",
-    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+    "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#multi-import",
     "location": "File > Import",
 }
 
@@ -21,9 +21,6 @@ import shutil
 class ImportAllOperator(Operator, ImportHelper):
     bl_idname = "import_scene.multi_importer"
     bl_label = "Import Multi Format"
-
-    # ImportHelper mixin class uses this
-    filename_ext = ""
 
     filter_glob: StringProperty(
         default="*.fbx;*.obj;*.stl;*.abc;*.usd;*.usdz;*.blend;*.zip;*.dae",

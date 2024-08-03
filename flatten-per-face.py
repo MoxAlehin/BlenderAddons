@@ -8,7 +8,7 @@ bl_info = {
     "blender": (2, 80, 0),
     "version": (1, 0),
     "category": "Mesh",
-    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+    "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#flatten-per-face",
     "location": "View3D > Mesh",
 }
 

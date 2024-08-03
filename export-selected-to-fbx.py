@@ -2,14 +2,15 @@ import bpy
 import os
 
 bl_info = {
-    "name": "Mox Export",
+    "name": "Export selected objects to FBX",
     "description": "Export selected objects to FBX in the same directory as the .blend file",
     "author": "Mox Alehin",
     "blender": (2, 80, 0),
     "version": (1, 2),
     "category": "Import-Export",
-    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+    "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#export-selected-to-fbx",
     "location": "File > Export",
+
 }
 
 class ExportSelectedToFBX(bpy.types.Operator):

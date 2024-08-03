@@ -5,7 +5,7 @@ bl_info = {
     "version": (1, 4),
     "blender": (2, 80, 0),
     "category": "System",
-    "doc-url": "https://github.com/MoxAlehin/Blender-Addons",
+    "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#multi-import",
 }
 
 import bpy
