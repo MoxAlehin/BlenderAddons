@@ -6,11 +6,10 @@ bl_info = {
     "description": "Export selected objects to FBX in the same directory as the .blend file",
     "author": "Mox Alehin",
     "blender": (2, 80, 0),
-    "version": (1, 2),
+    "version": (1, 3),
     "category": "Import-Export",
     "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#export-selected-to-fbx",
     "location": "File > Export",
-
 }
 
 class ExportSelectedToFBX(bpy.types.Operator):
@@ -41,6 +40,13 @@ class ExportSelectedToFBX(bpy.types.Operator):
 
         # Form the path to save the .fbx file
         fbx_filepath = os.path.join(blend_dir, fbx_name + ".fbx")
+
+        # Save current locations of selected objects
+        original_locations = {obj: obj.location.copy() for obj in selected_objects}
+
+        # Clear locations (move objects to origin)
+        for obj in selected_objects:
+            obj.location = (0, 0, 0)
 
         # Export selected objects to FBX
         bpy.ops.export_scene.fbx(
@@ -79,6 +85,10 @@ class ExportSelectedToFBX(bpy.types.Operator):
             axis_forward='-Z',
             axis_up='Y'
         )
+
+        # Restore original locations
+        for obj, loc in original_locations.items():
+            obj.location = loc
 
         self.report({'INFO'}, f"Selected objects exported to: {fbx_filepath}")
         return {'FINISHED'}
