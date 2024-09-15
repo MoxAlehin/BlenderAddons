@@ -3,7 +3,7 @@ bl_info = {
     "description": "",
     "author": "Mox Alehin",
     "blender": (2, 80, 0),
-    "version": (1, 0),
+    "version": (1, 1),
     "category": "Import-Export",
     "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#multi-import",
     "location": "File > Import",
@@ -11,12 +11,27 @@ bl_info = {
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from bpy.types import Operator
-from bpy.props import StringProperty
+from bpy.types import Operator, AddonPreferences
+from bpy.props import StringProperty, BoolProperty
 import zipfile
 import os
 import tempfile
 import shutil
+from mathutils import Vector
+import re
+
+class MultiImporterPreferences(AddonPreferences):
+    bl_idname = __name__
+
+    import_only_clean_geometry: BoolProperty(
+        name="Import only clean geometry",
+        description="If checked, imports only geometry without textures and other non-geometry data",
+        default=False,
+    )
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "import_only_clean_geometry")
 
 class ImportAllOperator(Operator, ImportHelper):
     bl_idname = "import_scene.multi_importer"
@@ -28,13 +43,42 @@ class ImportAllOperator(Operator, ImportHelper):
     )
 
     def execute(self, context):
-        # Here we will check the file extension and call the appropriate import function
+        # Get addon preferences
+        addon_prefs = context.preferences.addons[__name__].preferences
+        self.import_only_clean_geometry = addon_prefs.import_only_clean_geometry
+
+        # Save existing objects before import
+        existing_objects = set(bpy.data.objects.keys())
+
+        # Determine file extension and call appropriate import function
         filepath = self.filepath
         file_extension = filepath.split('.')[-1].lower()
 
+        # Get filename without extension
+        filename = os.path.basename(self.filepath)
+        object_name_raw = os.path.splitext(filename)[0]
+
+        # Convert name to Upper Camel Case
+        object_name = self.to_upper_camel_case(object_name_raw)
+
         self.import_file(filepath, file_extension)
 
+        # Get list of imported objects
+        imported_objects = [obj for obj in bpy.data.objects if obj.name not in existing_objects]
+
+        # Perform post-processing if the option is enabled
+        if self.import_only_clean_geometry:
+            self.post_process(imported_objects, object_name)
+
         return {'FINISHED'}
+
+    def to_upper_camel_case(self, name):
+        # Replace any non-alphanumeric characters with spaces
+        name = re.sub(r'[^A-Za-z0-9]+', ' ', name)
+        # Split the string into words
+        words = name.strip().split()
+        # Capitalize each word and join them
+        return ''.join(word.capitalize() for word in words)
 
     def import_file(self, filepath, file_extension):
         if file_extension == 'fbx':
@@ -59,7 +103,8 @@ class ImportAllOperator(Operator, ImportHelper):
         elif file_extension == 'zip':
             self.import_from_zip(filepath)
         elif file_extension in ['png', 'jpg', 'jpeg', 'tga', 'bmp']:
-            self.import_texture(filepath)
+            if not self.import_only_clean_geometry:
+                self.import_texture(filepath)
         else:
             self.report({'ERROR'}, f"Unsupported file format: {file_extension}")
             return {'CANCELLED'}
@@ -76,7 +121,7 @@ class ImportAllOperator(Operator, ImportHelper):
                 full_path = os.path.join(root, file)
                 file_extension = file.split('.')[-1].lower()
                 self.import_file(full_path, file_extension)
-        
+
         if temp_dir:
             # Clean up the temporary directory only if it was created in this function call
             shutil.rmtree(temp_dir)
@@ -91,12 +136,86 @@ class ImportAllOperator(Operator, ImportHelper):
             img = bpy.data.images.load(filepath)
         img.pack()  # Pack the image into the .blend file
 
-def menu_func_import(self, context):
-    self.layout.operator(ImportAllOperator.bl_idname, text="Import Multi Format")
+    def post_process(self, imported_objects, object_name):
+        # Deselect all objects
+        bpy.ops.object.select_all(action='DESELECT')
+
+        # Separate objects into meshes and non-meshes
+        mesh_objects = []
+        non_mesh_objects = []
+        for obj in imported_objects:
+            if obj.type == 'MESH':
+                mesh_objects.append(obj)
+                obj.select_set(True)
+            else:
+                non_mesh_objects.append(obj)
+
+        # Remove all non-mesh objects
+        for obj in non_mesh_objects:
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+        if not mesh_objects:
+            # No imported mesh objects
+            return
+
+        # Set the active object
+        bpy.context.view_layer.objects.active = mesh_objects[0]
+
+        # Join selected objects into one
+        if len(mesh_objects) > 1:
+            bpy.ops.object.join()
+            active_obj = bpy.context.view_layer.objects.active
+        else:
+            active_obj = mesh_objects[0]
+
+        # Rename object and its mesh
+        active_obj.name = object_name
+        active_obj.data.name = object_name
+
+        # Clear parent while keeping transforms
+        bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
+
+        # Remove all materials from the object
+        active_obj.data.materials.clear()
+
+        # Set origin to center of volume and move object to world center
+        bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
+        bpy.ops.object.location_clear()
+
+        # Scale the model to fit inside a 1-meter cube
+        bbox = [active_obj.matrix_world @ Vector(corner) for corner in active_obj.bound_box]
+        min_coord = Vector((min([v[i] for v in bbox]) for i in range(3)))
+        max_coord = Vector((max([v[i] for v in bbox]) for i in range(3)))
+        size = max_coord - min_coord
+        max_dimension = max(size)
+
+        if max_dimension > 1.0:
+            scale_factor = 1.0 / max_dimension
+            active_obj.scale *= scale_factor
+            bpy.ops.object.transform_apply(scale=True)
+
+        # Apply Shade Flat
+        bpy.ops.object.shade_flat()
+
+        # Remove all Seams and Sharps, clear Custom Split Normals Data
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.mark_seam(clear=True)
+        bpy.ops.mesh.mark_sharp(clear=True)
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Purge unused data
+        bpy.ops.outliner.orphans_purge(do_recursive=True)
+
+    @staticmethod
+    def menu_func_import(self, context):
+        self.layout.operator(ImportAllOperator.bl_idname, text="Import Multi Format")
 
 def register():
+    bpy.utils.register_class(MultiImporterPreferences)
     bpy.utils.register_class(ImportAllOperator)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.append(ImportAllOperator.menu_func_import)
 
     # Keymap
     wm = bpy.context.window_manager
@@ -107,7 +226,8 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(ImportAllOperator)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.utils.unregister_class(MultiImporterPreferences)
+    bpy.types.TOPBAR_MT_file_import.remove(ImportAllOperator.menu_func_import)
 
     # Remove keymap
     wm = bpy.context.window_manager
