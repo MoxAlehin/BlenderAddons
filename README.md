@@ -58,7 +58,7 @@ Once installed and enabled, the add-on works automatically. Every time you save 
 ## Use Case
 After retopology, your model might contain quadrilateral faces with vertices that do not lie on the same plane. This can lead to rendering artifacts and degrade the visual quality of the model. The **Flatten Per Face** add-on addresses this issue by flattening each selected face, ensuring that all vertices of a face lie on a single plane. If the result is not perfect after the first run, you can run the add-on multiple times until the faces are perfectly flattened.
 
-![](FlattenPerFaceMarshmallow.gif)
+![FlattenPerFace Marshmallow example](Images/FlattenPerFaceMarshmallow.gif)
 
 ## Features
 - Flattens each selected face independently.
