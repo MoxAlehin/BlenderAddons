@@ -38,7 +38,7 @@ class ImportAllOperator(Operator, ImportHelper):
     bl_label = "Import Multi Format"
 
     filter_glob: StringProperty(
-        default="*.fbx;*.obj;*.stl;*.abc;*.usd;*.usdz;*.blend;*.zip;*.dae",
+        default="*.fbx;*.obj;*.stl;*.abc;*.usd;*.usdz;*.blend;*.zip;*.dae;*.glb;*.gltf",
         options={'HIDDEN'},
     )
 
@@ -91,6 +91,8 @@ class ImportAllOperator(Operator, ImportHelper):
             bpy.ops.wm.alembic_import(filepath=filepath)
         elif file_extension == 'usd' or file_extension == 'usdz':
             bpy.ops.wm.usd_import(filepath=filepath)
+        elif file_extension in ['glb', 'gltf']:
+            bpy.ops.import_scene.gltf(filepath=filepath)
         elif file_extension == 'blend':
             # Using append to add data from the .blend file
             with bpy.data.libraries.load(filepath, link=False) as (data_from, data_to):
