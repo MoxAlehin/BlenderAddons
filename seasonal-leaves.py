@@ -10,6 +10,7 @@ bl_info = {
 
 import bpy
 import bmesh
+import random
 
 class MESH_OT_seasonal_leaves(bpy.types.Operator):
     """Seasonal Leaves"""
@@ -86,6 +87,8 @@ class MESH_OT_seasonal_leaves(bpy.types.Operator):
         # Set UV coordinates for each group
         u_step = 1.0 / len(islands) if len(islands) > 0 else 1.0
         u_pos = 0.0
+
+        random.shuffle(islands)
 
         for island in islands:
             for face in island:
