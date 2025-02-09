@@ -26,7 +26,7 @@ class MultiImporterPreferences(AddonPreferences):
     import_only_clean_geometry: BoolProperty(
         name="Import only clean geometry",
         description="If checked, imports only geometry without textures and other non-geometry data",
-        default=False,
+        default=True,
     )
 
     def draw(self, context):
@@ -152,6 +152,11 @@ class ImportAllOperator(Operator, ImportHelper):
             else:
                 non_mesh_objects.append(obj)
 
+        # Clear parent while keeping transforms for all imported objects
+        for obj in mesh_objects:
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
+
         # Remove all non-mesh objects
         for obj in non_mesh_objects:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -174,14 +179,17 @@ class ImportAllOperator(Operator, ImportHelper):
         active_obj.name = object_name
         active_obj.data.name = object_name
 
-        # Clear parent while keeping transforms
-        bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
-
         # Remove all materials from the object
         active_obj.data.materials.clear()
 
         # Set origin to center of volume and move object to world center
-        bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+        bbox = [active_obj.matrix_world @ Vector(corner) for corner in active_obj.bound_box]
+        min_z = min(v.z for v in bbox)
+
+        bpy.ops.object.transform_apply(location=True)
+        active_obj.location.z -= min_z
+
         bpy.ops.object.location_clear()
 
         # Scale the model to fit inside a 1-meter cube
@@ -191,8 +199,11 @@ class ImportAllOperator(Operator, ImportHelper):
         size = max_coord - min_coord
         max_dimension = max(size)
 
-        if max_dimension > 1.0:
-            scale_factor = 1.0 / max_dimension
+        scene_unit_scale = bpy.context.scene.unit_settings.scale_length
+        target_size = 1.0 / scene_unit_scale
+
+        if max_dimension > target_size:
+            scale_factor = target_size / max_dimension
             active_obj.scale *= scale_factor
             bpy.ops.object.transform_apply(scale=True)
 
@@ -202,8 +213,11 @@ class ImportAllOperator(Operator, ImportHelper):
         # Remove all Seams and Sharps, clear Custom Split Normals Data
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.remove_doubles(threshold=0.0001)
+        bpy.ops.mesh.tris_convert_to_quads(face_threshold=60, shape_threshold=60)
         bpy.ops.mesh.mark_seam(clear=True)
         bpy.ops.mesh.mark_sharp(clear=True)
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear()
         bpy.ops.object.mode_set(mode='OBJECT')
 
