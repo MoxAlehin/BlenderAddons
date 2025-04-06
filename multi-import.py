@@ -182,13 +182,20 @@ class ImportAllOperator(Operator, ImportHelper):
         # Remove all materials from the object
         active_obj.data.materials.clear()
 
-        # Set origin to center of volume and move object to world center
-        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+        # Calculate bounding box world coordinates
         bbox = [active_obj.matrix_world @ Vector(corner) for corner in active_obj.bound_box]
+
+        # Calculate center in X and Y, and minimum Z
+        center_x = sum([v.x for v in bbox]) / 8.0
+        center_y = sum([v.y for v in bbox]) / 8.0
         min_z = min(v.z for v in bbox)
 
-        bpy.ops.object.transform_apply(location=True)
-        active_obj.location.z -= min_z
+        # Move origin to center X/Y, bottom Z
+        pivot = Vector((center_x, center_y, min_z))
+        active_obj.location -= pivot
+        bpy.context.view_layer.update()
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR', center='BOUNDS')
+        active_obj.location += pivot
 
         bpy.ops.object.location_clear()
 
@@ -202,10 +209,9 @@ class ImportAllOperator(Operator, ImportHelper):
         scene_unit_scale = bpy.context.scene.unit_settings.scale_length
         target_size = 1.0 / scene_unit_scale
 
-        if max_dimension > target_size:
-            scale_factor = target_size / max_dimension
-            active_obj.scale *= scale_factor
-            bpy.ops.object.transform_apply(scale=True)
+        scale_factor = target_size / max_dimension
+        active_obj.scale *= scale_factor
+        bpy.ops.object.transform_apply(scale=True)
 
         # Apply Shade Flat
         bpy.ops.object.shade_flat()
