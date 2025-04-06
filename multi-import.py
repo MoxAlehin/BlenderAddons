@@ -221,6 +221,13 @@ class ImportAllOperator(Operator, ImportHelper):
         bpy.ops.mesh.customdata_custom_splitnormals_clear()
         bpy.ops.object.mode_set(mode='OBJECT')
 
+        # Keep only the first UV map and rename it to "UVMap"
+        mesh = active_obj.data
+        if hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
+            mesh.uv_layers[0].name = "UVMap"
+            while len(mesh.uv_layers) > 1:
+                mesh.uv_layers.remove(mesh.uv_layers[-1])
+
         # Purge unused data
         bpy.ops.outliner.orphans_purge(do_recursive=True)
 
