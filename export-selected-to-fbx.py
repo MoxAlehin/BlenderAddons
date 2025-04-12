@@ -6,7 +6,7 @@ bl_info = {
     "description": "Export selected objects to FBX in the same directory as the .blend file",
     "author": "Mox Alehin",
     "blender": (2, 80, 0),
-    "version": (1, 3),
+    "version": (1, 4),
     "category": "Import-Export",
     "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#export-selected-to-fbx",
     "location": "File > Export",
@@ -17,9 +17,8 @@ class ExportSelectedToFBX(bpy.types.Operator):
     bl_idname = "export_scene.selected_to_fbx"
     bl_label = "Export Selected to FBX"
     bl_options = {'REGISTER', 'UNDO_GROUPED'}
-    
-    def execute(self, context):
 
+    def execute(self, context):
         # Get the current .blend file path
         blend_filepath = bpy.data.filepath
 
@@ -41,12 +40,11 @@ class ExportSelectedToFBX(bpy.types.Operator):
         # Form the path to save the .fbx file
         fbx_filepath = os.path.join(blend_dir, fbx_name + ".fbx")
 
-        # Save current locations of selected objects
-        original_locations = {obj: obj.location.copy() for obj in selected_objects}
-
         # Clear locations (move objects to origin)
         for obj in selected_objects:
             obj.location = (0, 0, 0)
+
+        bpy.ops.object.shade_auto_smooth(use_auto_smooth=True, angle=0.0174533)
 
         # Export selected objects to FBX
         bpy.ops.export_scene.fbx(
@@ -59,13 +57,13 @@ class ExportSelectedToFBX(bpy.types.Operator):
             bake_space_transform=False,
             use_mesh_modifiers=True,
             use_mesh_modifiers_render=True,
-            mesh_smooth_type='FACE',
+            mesh_smooth_type='EDGE',        # To reduce number of vertices
             colors_type='SRGB',
             prioritize_active_color=False,
             use_subsurf=False,
             use_mesh_edges=False,
-            use_tspace=False,
-            use_triangles=False,
+            use_tspace=True,                # To reduce number of vertices
+            use_triangles=True,             # To reduce number of vertices
             use_custom_props=True,
             add_leaf_bones=False,
             primary_bone_axis='Y',
@@ -86,11 +84,22 @@ class ExportSelectedToFBX(bpy.types.Operator):
             axis_up='Y'
         )
 
-        # Restore original locations
-        for obj, loc in original_locations.items():
-            obj.location = loc
-
         self.report({'INFO'}, f"Selected objects exported to: {fbx_filepath}")
+        return {'FINISHED'}
+
+class ExportAndUndoOperator(bpy.types.Operator):
+    """Export selected objects to FBX and then undo all changes (except the file export)"""
+    bl_idname = "export_scene.selected_to_fbx_and_undo"
+    bl_label = "Export Selected to FBX and Undo"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        # Call the ExportSelectedToFBX operator (this will perform the export)
+        bpy.ops.export_scene.selected_to_fbx()
+
+        # Now, undo all changes except the export (will revert transformations, but not the file)
+        bpy.ops.ed.undo()
+
         return {'FINISHED'}
 
 # Register the operator
@@ -101,18 +110,20 @@ addon_keymaps = []
 
 def register():
     bpy.utils.register_class(ExportSelectedToFBX)
+    bpy.utils.register_class(ExportAndUndoOperator)
     bpy.types.TOPBAR_MT_file_export.append(menu_func)
 
-    # Register hotkey
+    # Register hotkey for the export + undo operator
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
         km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
-        kmi = km.keymap_items.new(ExportSelectedToFBX.bl_idname, 'S', 'PRESS', ctrl=True, shift=True, alt=True)
+        kmi = km.keymap_items.new(ExportAndUndoOperator.bl_idname, 'S', 'PRESS', ctrl=True, shift=True, alt=True)
         addon_keymaps.append((km, kmi))
 
 def unregister():
     bpy.utils.unregister_class(ExportSelectedToFBX)
+    bpy.utils.unregister_class(ExportAndUndoOperator)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func)
 
     # Remove hotkey
