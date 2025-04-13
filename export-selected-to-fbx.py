@@ -16,7 +16,7 @@ class ExportSelectedToFBX(bpy.types.Operator):
     """Core exporter: Exports selected objects to FBX at specified filepath"""
     bl_idname = "export_scene.selected_to_fbx"
     bl_label = "Export Selected to FBX"
-    bl_options = {'INTERNAL'}
+    bl_options = {'REGISTER', 'UNDO_GROUPED'}
 
     filepath: bpy.props.StringProperty(name="FBX Filepath")
 
