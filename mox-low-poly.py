@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Mox Low Poly",
-    "description": "Automatically adds custom linear color properties to selected new mesh objects",
+    "description": "Adds custom linear color properties to selected new mesh objects in a custom Mox panel",
     "author": "Mox Alehin",
-    "version": (1, 4),
+    "version": (1, 7),
     "blender": (2, 80, 0),
     "category": "Object",
     "doc_url": "https://github.com/MoxAlehin/Blender-Addons",
@@ -74,21 +74,43 @@ def add_custom_properties_to_new_object(scene):
                     description=prop_settings["description"]
                 )
 
+# Создаём пользовательскую панель для отображения свойств
+class MOX_PT_custom_properties(bpy.types.Panel):
+    bl_label = "Mox"
+    bl_idname = "MOX_PT_custom_properties"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+    bl_order = -100  # Низкое значение для размещения наверху
+    bl_options = {'DEFAULT_CLOSED'}  # Панель развёрнута по умолчанию
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+
+        if obj and obj.type == 'MESH':
+            # Отображаем свойства Color 1-4
+            for prop_name in CUSTOM_PROPERTIES:
+                if prop_name in obj:
+                    layout.prop(obj, f'["{prop_name}"]', text=prop_name)
+
 class MoxLowPolyPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="This addon adds custom linear color properties (Color 1-4) to selected new mesh objects.")
+        layout.label(text="This addon adds custom linear color properties (Color 1-4) to selected new mesh objects in a Mox panel.")
 
 def register():
     bpy.utils.register_class(MoxLowPolyPreferences)
+    bpy.utils.register_class(MOX_PT_custom_properties)
     if add_custom_properties_to_new_object not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(add_custom_properties_to_new_object)
 
 def unregister():
     if add_custom_properties_to_new_object in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(add_custom_properties_to_new_object)
+    bpy.utils.unregister_class(MOX_PT_custom_properties)
     bpy.utils.unregister_class(MoxLowPolyPreferences)
 
 if __name__ == "__main__":
