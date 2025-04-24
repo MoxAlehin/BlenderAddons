@@ -1,0 +1,25 @@
+{
+    "None":         "FF00FFFF",
+
+    "Light Wood":   "443200FF",
+    "Dark Wood":    "3F2E00FF",
+    "Foliage":      "308919FF",
+    "Dirt":         "3B2707FF",
+
+    "Stone":        "3F4B50FF",
+    "Concrete":     "6C6C6CFF",
+    "Terracota":    "A04B38FF",
+
+    "Iron":         "3F4B50FF",
+    "Aluminum":     "d0d5db",
+    "Copper":       "B67359FF",
+    "Bronze":       "#ce8946",
+    "Brass":        "E1C06CFF",
+    "Silver":       "#C0C0C0",
+    "Gold":         "E7BA12FF",
+
+    "Plastic":      "787B7CFF",
+    "Cardboard":    "7E5900FF",
+    "Display":      "7AB065FF",
+    "Chocolate":    "5b3327"
+}
