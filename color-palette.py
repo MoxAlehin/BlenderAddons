@@ -112,7 +112,7 @@ bpy.types.Mesh.color_1 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0),  # Black by default
+    default=(0.5, 0.5, 0.5),  # Black by default
     update=update_color
 )
 
@@ -123,7 +123,7 @@ bpy.types.Mesh.color_2 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0),  # Black by default
+    default=(1.0, 0.0, 0.0),  # Black by default
     update=update_color
 )
 
@@ -134,7 +134,7 @@ bpy.types.Mesh.color_3 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0),  # Black by default
+    default=(0.0, 1.0, 0.0),  # Black by default
     update=update_color
 )
 
@@ -145,7 +145,7 @@ bpy.types.Mesh.color_4 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0),  # Black by default
+    default=(0.0, 0.0, 1.0),  # Black by default
     update=update_color
 )
 
@@ -186,7 +186,7 @@ bpy.types.Object.color_1 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0)  # Black by default
+    default=(0.5, 0.5, 0.5)  # Black by default
 )
 
 bpy.types.Object.color_2 = FloatVectorProperty(
@@ -196,7 +196,7 @@ bpy.types.Object.color_2 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0)  # Black by default
+    default=(1.0, 0.0, 0.0)  # Black by default
 )
 
 bpy.types.Object.color_3 = FloatVectorProperty(
@@ -206,7 +206,7 @@ bpy.types.Object.color_3 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0)  # Black by default
+    default=(0.0, 1.0, 0.0)  # Black by default
 )
 
 bpy.types.Object.color_4 = FloatVectorProperty(
@@ -216,7 +216,7 @@ bpy.types.Object.color_4 = FloatVectorProperty(
     size=3,
     min=0.0,
     max=1.0,
-    default=(0.0, 0.0, 0.0)  # Black by default
+    default=(0.0, 0.0, 1.0)  # Black by default
 )
 
 # Custom panel in Mesh Properties
