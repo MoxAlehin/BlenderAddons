@@ -1,8 +1,8 @@
 {
     "None":         "FF00FFFF",
 
-    "Light Wood":   "443200FF",
-    "Dark Wood":    "3F2E00FF",
+    "Light Wood":   "4C2900FF",
+    "Dark Wood":    "2E1900FF",
     "Foliage":      "308919FF",
     "Dirt":         "3B2707FF",
 
@@ -21,5 +21,7 @@
     "Plastic":      "787B7CFF",
     "Cardboard":    "7E5900FF",
     "Display":      "7AB065FF",
-    "Chocolate":    "5b3327"
+    "Chocolate":    "5b3327",
+    "Military":     "2c5f34",
+    "Olive":        "636b2f"
 }
