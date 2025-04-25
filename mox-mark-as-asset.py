@@ -66,18 +66,22 @@ class OBJECT_OT_MoxMarkAsAsset(Operator):
             self.report({'ERROR'}, "No mesh objects selected")
             return {'CANCELLED'}
 
+        # Call Fix UV operator
+        try:
+            bpy.ops.object.fix_uv()
+        except Exception as e:
+            self.report({'WARNING'}, f"Failed to fix UV channels for {obj.name}: {str(e)}")
+
         processed_objects = 0
 
         for obj in selected_objects:
+            # Снимаем выделение со всех объектов                
+            for o in selected_objects:
+                o.select_set(False)
+            # Выделяем только текущий объект
+            obj.select_set(True)
             # Set object as active
             context.view_layer.objects.active = obj
-
-            # Call Fix UV operator
-            try:
-                bpy.ops.object.fix_uv()
-            except Exception as e:
-                self.report({'WARNING'}, f"Failed to fix UV channels for {obj.name}: {str(e)}")
-                continue
 
             # Check for material
             if not obj.material_slots or not obj.material_slots[0].material:
@@ -255,6 +259,10 @@ class OBJECT_OT_MoxMarkAsAsset(Operator):
             scene.cycles.bake_type = original_bake_type
             
             processed_objects += 1
+
+        # Восстанавливаем исходное выделение
+        for o in selected_objects:
+            o.select_set(True)
 
         self.report({'INFO'}, f"Processed {processed_objects} objects as assets")
         return {'FINISHED'}
