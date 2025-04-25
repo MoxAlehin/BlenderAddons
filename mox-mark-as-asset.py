@@ -1,9 +1,9 @@
 bl_info = {
     "name": "Mox Mark as Asset",
     "author": "Mox Alehin",
-    "version": (2, 11),
+    "version": (2, 16),
     "blender": (3, 0, 0),
-    "location": "Object Menu > Mox Mark as Asset",
+    "location": "Object Menu > Mox Mark as Asset, 3D Viewport Context Menu (when objects selected)",
     "description": "Fixes UV channels, bakes albedo texture, prepares material, and marks selected objects as assets",
     "category": "Object",
 }
@@ -262,15 +262,22 @@ class OBJECT_OT_MoxMarkAsAsset(Operator):
 def menu_func(self, context):
     self.layout.operator(OBJECT_OT_MoxMarkAsAsset.bl_idname)
 
+def context_menu_func(self, context):
+    if context.selected_objects:  # Show option only if at least one object is selected
+        self.layout.operator(OBJECT_OT_MoxMarkAsAsset.bl_idname)
+        self.layout.separator()  # Add separator for clarity
+
 def register():
     bpy.utils.register_class(MoxMarkAsAssetPreferences)
     bpy.utils.register_class(OBJECT_OT_MoxMarkAsAsset)
     bpy.types.VIEW3D_MT_object.append(menu_func)
+    bpy.types.VIEW3D_MT_object_context_menu.prepend(context_menu_func)
 
 def unregister():
     bpy.utils.unregister_class(MoxMarkAsAssetPreferences)
     bpy.utils.unregister_class(OBJECT_OT_MoxMarkAsAsset)
     bpy.types.VIEW3D_MT_object.remove(menu_func)
+    bpy.types.VIEW3D_MT_object_context_menu.remove(context_menu_func)
 
 if __name__ == "__main__":
     register()
