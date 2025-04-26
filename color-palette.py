@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Color Palette",
     "author": "Mox Alehin",
-    "version": (1, 36),
+    "version": (1, 39),
     "blender": (3, 0, 0),
     "location": "Properties > Mesh > Object Materials",
     "description": "Adds four Enum and four Color properties to objects and meshes, with panel in Mesh Properties",
@@ -14,7 +14,7 @@ from bpy.app.handlers import persistent
 import json
 import os
 
-# Custom path to material_options.json (relative to user home directory)
+# Custom path to material_options.json
 CUSTOM_JSON_PATH = "Brain/Activities/App/Blender/Add-ons/MoxAddons/material_options.json"
 
 # Global material options and enum items
@@ -26,49 +26,84 @@ def load_material_options():
     home_dir = os.path.expanduser("~")
     json_path = os.path.join(home_dir, CUSTOM_JSON_PATH)
     
-    try:
-        with open(json_path, 'r') as f:
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except Exception as e:
-        print(f"Error loading material_options.json from {json_path}: {e}")
-        return {"None": "#000000"}
+    print(f"Warning: material_options.json not found at {json_path}, using default")
+    return {"None": "#000000"}
 
 # Save MATERIAL_OPTIONS to JSON file
 def save_material_options():
     home_dir = os.path.expanduser("~")
     json_path = os.path.join(home_dir, CUSTOM_JSON_PATH)
     
-    try:
-        os.makedirs(os.path.dirname(json_path), exist_ok=True)
-        with open(json_path, 'w') as f:
-            json.dump(MATERIAL_OPTIONS, f, indent=4)
-        print(f"Saved material_options.json to {json_path}")
-    except Exception as e:
-        print(f"Error saving material_options.json to {json_path}: {e}")
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(MATERIAL_OPTIONS, f, indent=4)
 
-# Update ENUM_ITEMS based on MATERIAL_OPTIONS
-def update_enum_items():
-    global ENUM_ITEMS
-    ENUM_ITEMS = [(str(i), name, "") for i, name in enumerate(MATERIAL_OPTIONS.keys())]
-    # Update EnumProperty items for all material properties
+# Update MATERIAL_OPTIONS, ENUM_ITEMS, and re-register properties
+def update_material_options_and_enums(context):
+    global MATERIAL_OPTIONS, ENUM_ITEMS
+    
+    # Save current property values
+    saved_props = {}
+    for obj in bpy.data.objects:
+        if obj.type == 'MESH' and obj.data:
+            mesh = obj.data
+            saved_props[obj.name] = {
+                'mesh': {f"material_{i}": mesh.get(f"material_{i}", '0') for i in range(1, 5)},
+                'obj': {f"material_{i}": obj.get(f"material_{i}", '0') for i in range(1, 5)},
+                'mesh_colors': {f"color_{i}": mesh.get(f"color_{i}", (0.0, 0.0, 0.0)) for i in range(1, 5)},
+                'obj_colors': {f"color_{i}": obj.get(f"color_{i}", (0.0, 0.0, 0.0)) for i in range(1, 5)},
+            }
+    
+    # Update MATERIAL_OPTIONS
+    MATERIAL_OPTIONS = {"None": "#000000"}
+    for item in context.scene.material_items:
+        if item.name and item.name != "None":
+            hex_color = "#{:02x}{:02x}{:02x}".format(
+                int(item.color[0] * 255),
+                int(item.color[1] * 255),
+                int(item.color[2] * 255)
+            )
+            MATERIAL_OPTIONS[item.name] = hex_color
+    
+    save_material_options()
+    
+    # Unregister properties
     for i in range(1, 5):
-        prop_name = f"material_{i}"
         for target in (bpy.types.Mesh, bpy.types.Object):
-            if hasattr(target, '__annotations__') and prop_name in target.__annotations__:
-                prop = target.__annotations__[prop_name]
-                prop.keywords['items'] = ENUM_ITEMS
-                # Reset to default if current value is invalid
-                for obj in bpy.data.objects:
-                    if obj.type == 'MESH' and obj.data:
-                        mesh = obj.data
-                        if prop_name in mesh and int(mesh[prop_name]) >= len(ENUM_ITEMS):
-                            mesh[prop_name] = '0'
-                        if prop_name in obj and int(obj[prop_name]) >= len(ENUM_ITEMS):
-                            obj[prop_name] = '0'
+            for prop in (f"material_{i}", f"color_{i}"):
+                if hasattr(target, prop):
+                    delattr(target, prop)
+    
+    # Update ENUM_ITEMS
+    ENUM_ITEMS = [(str(i), name, "") for i, name in enumerate(MATERIAL_OPTIONS.keys())]
+    
+    # Re-register properties
+    register_properties()
+    
+    # Restore saved property values
+    for obj in bpy.data.objects:
+        if obj.type == 'MESH' and obj.data and obj.name in saved_props:
+            mesh = obj.data
+            props = saved_props[obj.name]
+            for i in range(1, 5):
+                material_prop = f"material_{i}"
+                color_prop = f"color_{i}"
+                # Restore material indices, clamping to valid range
+                mesh_material = props['mesh'][material_prop]
+                obj_material = props['obj'][material_prop]
+                max_index = str(len(ENUM_ITEMS) - 1)
+                mesh[material_prop] = mesh_material if int(mesh_material) < len(ENUM_ITEMS) else '0'
+                obj[material_prop] = obj_material if int(obj_material) < len(ENUM_ITEMS) else '0'
+                # Restore colors
+                mesh[color_prop] = props['mesh_colors'][color_prop]
+                obj[color_prop] = props['obj_colors'][color_prop]
 
 # Initialize MATERIAL_OPTIONS and ENUM_ITEMS
 MATERIAL_OPTIONS = load_material_options()
-update_enum_items()
+ENUM_ITEMS = [(str(i), name, "") for i, name in enumerate(MATERIAL_OPTIONS.keys())]
 
 # Convert hex color to RGB tuple
 def hex_to_rgb(hex_color):
@@ -80,61 +115,49 @@ def update_material(self, context):
     mesh = self
     obj = context.active_object
     if not obj or obj.data != mesh:
-        print(f"Warning: No valid object found for mesh {mesh.name}")
         return
     
     properties = ['material_1', 'material_2', 'material_3', 'material_4']
     for prop_name in properties:
         if prop_name not in mesh:
             mesh[prop_name] = '0'
-            print(f"Initialized {prop_name} on mesh {mesh.name} to '0'")
         if prop_name not in obj:
             obj[prop_name] = '0'
-            print(f"Initialized {prop_name} on object {obj.name} to '0'")
         
         obj[prop_name] = mesh[prop_name]
-        print(f"Synced {prop_name}: Mesh={mesh[prop_name]} ({list(MATERIAL_OPTIONS.keys())[int(mesh[prop_name])]}), Object={obj[prop_name]} ({list(MATERIAL_OPTIONS.keys())[int(obj[prop_name])]})")
         
         material_name = list(MATERIAL_OPTIONS.keys())[int(mesh[prop_name])]
         color_prop = f"color_{prop_name.split('_')[1]}"
         if material_name != "None":
             if color_prop not in mesh:
                 mesh[color_prop] = (0.0, 0.0, 0.0)
-                print(f"Initialized {color_prop} on mesh {mesh.name} to (0.0, 0.0, 0.0)")
             if color_prop not in obj:
                 obj[color_prop] = (0.0, 0.0, 0.0)
-                print(f"Initialized {color_prop} on object {obj.name} to (0.0, 0.0, 0.0)")
             
             hex_color = MATERIAL_OPTIONS[material_name]
             rgb_color = hex_to_rgb(hex_color)
             mesh[color_prop] = rgb_color
             obj[color_prop] = rgb_color
-            print(f"Updated {color_prop}: Set to {rgb_color} from {material_name} ({hex_color})")
 
 # Update function to sync Mesh color properties to Object and enforce read-only
 def update_color(self, context):
     mesh = self
     obj = context.active_object
     if not obj or obj.data != mesh:
-        print(f"Warning: No valid object found for mesh {mesh.name}")
         return
     
     properties = ['color_1', 'color_2', 'color_3', 'color_4']
     for prop_name in properties:
         if prop_name not in mesh:
             mesh[prop_name] = (0.0, 0.0, 0.0)
-            print(f"Initialized {prop_name} on mesh {mesh.name} to (0.0, 0.0, 0.0)")
         if prop_name not in obj:
             obj[prop_name] = (0.0, 0.0, 0.0)
-            print(f"Initialized {prop_name} on object {obj.name} to (0.0, 0.0, 0.0)")
         
         material_prop = f"material_{prop_name.split('_')[1]}"
         if material_prop not in mesh:
             mesh[material_prop] = '0'
-            print(f"Initialized {material_prop} on mesh {mesh.name} to '0'")
         if material_prop not in obj:
             obj[material_prop] = '0'
-            print(f"Initialized {prop_name} on object {obj.name} to '0'")
         
         material_name = list(MATERIAL_OPTIONS.keys())[int(mesh[material_prop])]
         if material_name != "None":
@@ -143,10 +166,27 @@ def update_color(self, context):
             if tuple(mesh[prop_name]) != rgb_color:
                 mesh[prop_name] = rgb_color
                 obj[prop_name] = rgb_color
-                print(f"Reverted {prop_name}: Set to {rgb_color} from {material_name} ({hex_color})")
         else:
             obj[prop_name] = mesh[prop_name]
-            print(f"Synced {prop_name}: Mesh={mesh[prop_name][:3]}, Object={obj[prop_name][:3]}")
+
+# Function to safely open .blend file containing an asset
+def open_asset_blend_file(context):
+    if not hasattr(context, "asset") or not context.asset:
+        print("Error: No active asset found in context")
+        return False
+    
+    asset_file = context.asset.filepath
+    if not asset_file or not os.path.exists(asset_file):
+        print(f"Error: Asset file path invalid or missing: {asset_file}")
+        return False
+    
+    if bpy.ops.asset.open_containing_blend_file.poll():
+        bpy.ops.asset.open_containing_blend_file()
+        return True
+    else:
+        print("Warning: asset.open_containing_blend_file() not available, using wm.open_mainfile")
+        bpy.ops.wm.open_mainfile(filepath=asset_file)
+        return True
 
 # Operator to sync material colors for all mesh objects in the scene
 class SyncMaterialColorsOperator(bpy.types.Operator):
@@ -157,10 +197,9 @@ class SyncMaterialColorsOperator(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return True  # Button is always active
+        return True
 
     def execute(self, context):
-        print("Executing SyncMaterialColorsOperator")
         original_active = context.active_object
         for obj in bpy.data.objects:
             if obj.type == 'MESH' and obj.data:
@@ -168,27 +207,18 @@ class SyncMaterialColorsOperator(bpy.types.Operator):
                 mesh = obj.data
                 update_material(mesh, context)
                 update_color(mesh, context)
-                # Update mesh to apply custom properties
                 mesh.update()
-                print(f"Processed {obj.name} for material and color sync")
         context.view_layer.objects.active = original_active
-        # Update dependency graph
         context.view_layer.depsgraph.update()
-        # Force redraw
         bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
         return {'FINISHED'}
 
 # UI List for displaying materials
 class MATERIAL_UL_materials(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        row = layout.row(align=True)
-        row.prop(item, "name", text="", emboss=False)
-        # Use a sub-row to control color picker appearance
-        color_row = row.row()
-        color_row.ui_units_x = 4  # Fixed width for consistency
-        color_row.prop(item, "color", text="")
-        # Remove rounded corners by setting a style
-        color_row.emboss = 'NONE_OR_STATUS'
+        split = layout.split(factor=0.7)
+        split.prop(item, "name", text="", emboss=False)
+        split.prop(item, "color", text="", emboss=True)
 
 # Operator to edit materials
 class EditMaterialsOperator(bpy.types.Operator):
@@ -198,61 +228,28 @@ class EditMaterialsOperator(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def invoke(self, context, event):
-        # Initialize temporary material list, excluding "None"
         context.scene.material_items.clear()
         for name, hex_color in MATERIAL_OPTIONS.items():
             if name != "None":
                 item = context.scene.material_items.add()
                 item.name = name
                 item.color = hex_to_rgb(hex_color)
-        
         return context.window_manager.invoke_props_dialog(self, width=400)
 
     def draw(self, context):
         layout = self.layout
-        
-        # Button row at the top
         row = layout.row(align=True)
-        row.alignment = 'CENTER'
+        row.scale_y = 1.2
         row.operator("material.add_material", text="+")
-        row.operator("material.delete_material", text="−")
+        row.operator("material.delete_material", text="-")
         row.operator("material.move_material_up", text="↑")
         row.operator("material.move_material_down", text="↓")
-        
-        # Material list with dynamic height
-        num_items = len(context.scene.material_items)
-        rows = min(num_items if num_items > 0 else 1, 30)  # At least 1 row, max 30
-        layout.template_list(
-            "MATERIAL_UL_materials",
-            "",
-            context.scene,
-            "material_items",
-            context.scene,
-            "material_index",
-            rows=rows
-        )
+        rows = min(len(context.scene.material_items), 30)
+        layout.template_list("MATERIAL_UL_materials", "", context.scene, "material_items", context.scene, "material_index", rows=rows)
 
     def execute(self, context):
-        global MATERIAL_OPTIONS
-        # Start with "None" as the first entry
-        MATERIAL_OPTIONS = {"None": "#000000"}
-        # Add other materials from material_items
-        for item in context.scene.material_items:
-            if item.name and item.name != "None":
-                hex_color = "#{:02x}{:02x}{:02x}".format(
-                    int(item.color[0] * 255),
-                    int(item.color[1] * 255),
-                    int(item.color[2] * 255)
-                )
-                MATERIAL_OPTIONS[item.name] = hex_color
+        update_material_options_and_enums(context)
         
-        # Save to JSON
-        save_material_options()
-        
-        # Update ENUM_ITEMS
-        update_enum_items()
-        
-        # Sync all objects
         original_active = context.active_object
         for obj in bpy.data.objects:
             if obj.type == 'MESH' and obj.data:
@@ -260,12 +257,9 @@ class EditMaterialsOperator(bpy.types.Operator):
                 mesh = obj.data
                 update_material(mesh, context)
                 update_color(mesh, context)
-                # Update mesh to apply custom properties
                 mesh.update()
         context.view_layer.objects.active = original_active
-        # Update dependency graph
         context.view_layer.depsgraph.update()
-        # Force redraw
         bpy.ops.wm.redraw_timer(type='DRAW_WIN', iterations=1)
         return {'FINISHED'}
 
@@ -278,8 +272,9 @@ class AddMaterialOperator(bpy.types.Operator):
     def execute(self, context):
         item = context.scene.material_items.add()
         item.name = "New Material"
-        item.color = (1.0, 1.0, 1.0)  # Default to white
+        item.color = (1.0, 1.0, 1.0)
         context.scene.material_index = len(context.scene.material_items) - 1
+        update_material_options_and_enums(context)
         return {'FINISHED'}
 
 # Operator to delete a material
@@ -292,6 +287,7 @@ class DeleteMaterialOperator(bpy.types.Operator):
         if context.scene.material_index < len(context.scene.material_items):
             context.scene.material_items.remove(context.scene.material_index)
             context.scene.material_index = min(context.scene.material_index, len(context.scene.material_items) - 1)
+        update_material_options_and_enums(context)
         return {'FINISHED'}
 
 # Operator to move material up
@@ -347,18 +343,20 @@ def register_color_property(prop_name, target):
     ))
 
 # Register properties
-for i in range(1, 5):
-    material_prop = f"material_{i}"
-    color_prop = f"color_{i}"
-    register_material_property(material_prop, bpy.types.Mesh)
-    register_color_property(color_prop, bpy.types.Mesh)
-    register_material_property(material_prop, bpy.types.Object)
-    register_color_property(color_prop, bpy.types.Object)
+def register_properties():
+    for i in range(1, 5):
+        material_prop = f"material_{i}"
+        color_prop = f"color_{i}"
+        register_material_property(material_prop, bpy.types.Mesh)
+        register_color_property(color_prop, bpy.types.Mesh)
+        register_material_property(material_prop, bpy.types.Object)
+        register_color_property(color_prop, bpy.types.Object)
 
 # Register custom properties for material editing
-bpy.utils.register_class(MaterialItem)
-bpy.types.Scene.material_items = bpy.props.CollectionProperty(type=MaterialItem)
-bpy.types.Scene.material_index = IntProperty(name="Material Index", default=0)
+def register_material_items():
+    bpy.utils.register_class(MaterialItem)
+    bpy.types.Scene.material_items = bpy.props.CollectionProperty(type=MaterialItem)
+    bpy.types.Scene.material_index = IntProperty(name="Material Index", default=0)
 
 # Custom panel in Mesh Properties
 class MATERIAL_PT_panel(bpy.types.Panel):
@@ -366,33 +364,27 @@ class MATERIAL_PT_panel(bpy.types.Panel):
     bl_idname = "PT_ObjectMaterials"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
-    bl_context = "data"  # Mesh Properties
+    bl_context = "data"
 
     def draw(self, context):
         layout = self.layout
         mesh = context.mesh
         if mesh:
             row = layout.row()
-
             column = row.column()
             column.prop(mesh, "material_1", text="")
             column.prop(mesh, "material_3", text="")
-
             column = row.column()
             column.scale_x = 0.35
             column.prop(mesh, "color_1", text="")
             column.prop(mesh, "color_3", text="")
-
             column = row.column()
             column.prop(mesh, "material_2", text="")
             column.prop(mesh, "material_4", text="")
-
             column = row.column()
             column.scale_x = 0.35
             column.prop(mesh, "color_2", text="")
             column.prop(mesh, "color_4", text="")
-
-            # Buttons
             row = layout.row()
             row.operator("object.sync_material_colors", text="Sync Colors")
             row.operator("object.edit_materials", text="Edit Materials")
@@ -400,15 +392,15 @@ class MATERIAL_PT_panel(bpy.types.Panel):
 # Handler for auto-sync after loading a .blend file
 @persistent
 def auto_sync_post_load(dummy):
-    try:
-        bpy.ops.object.sync_material_colors()
-        print("Auto-sync triggered after file load")
+    if not bpy.context.scene or not bpy.data.objects or not bpy.context.view_layer:
         return
-    except Exception as e:
-        print(f"Error during auto-sync after file load: {e}")
+    if bpy.ops.object.sync_material_colors.poll():
+        bpy.ops.object.sync_material_colors()
 
 # Register the addon
 def register():
+    register_properties()
+    register_material_items()
     bpy.utils.register_class(MATERIAL_PT_panel)
     bpy.utils.register_class(SyncMaterialColorsOperator)
     bpy.utils.register_class(EditMaterialsOperator)
@@ -417,9 +409,8 @@ def register():
     bpy.utils.register_class(DeleteMaterialOperator)
     bpy.utils.register_class(MoveMaterialUpOperator)
     bpy.utils.register_class(MoveMaterialDownOperator)
-    # Register load_post handler
-    bpy.app.handlers.load_post.append(auto_sync_post_load)
-    print("Registered SyncMaterialColorsOperator, EditMaterialsOperator, and auto-sync handler")
+    if auto_sync_post_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(auto_sync_post_load)
 
 # Unregister the addon
 def unregister():
@@ -431,12 +422,10 @@ def unregister():
     bpy.utils.unregister_class(DeleteMaterialOperator)
     bpy.utils.unregister_class(MoveMaterialUpOperator)
     bpy.utils.unregister_class(MoveMaterialDownOperator)
-    # Remove load_post handler
     if auto_sync_post_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(auto_sync_post_load)
     del bpy.types.Scene.material_items
     del bpy.types.Scene.material_index
-    print("Unregistered SyncMaterialColorsOperator, EditMaterialsOperator, and auto-sync handler")
     for i in range(1, 5):
         for target in (bpy.types.Mesh, bpy.types.Object):
             for prop in (f"material_{i}", f"color_{i}"):
