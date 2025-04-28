@@ -1,10 +1,10 @@
 bl_info = {
     "name": "Mox Fix Object",
-    "author": "Your Name",
-    "version": (1, 5),
+    "author": "Mox Alehin",
+    "version": (1, 7),
     "blender": (3, 0, 0),
     "location": "Object Context Menu",
-    "description": "Fixes UV, scales small objects based on scene units, and applies a material from Asset Library",
+    "description": "Fixes UV, scales small objects, clears custom normals, recalculates normals, and applies a material from Asset Library",
     "category": "Object",
 }
 
@@ -31,8 +31,8 @@ class MoxFixObjectPreferences(AddonPreferences):
 
     size_threshold: FloatProperty(
         name="Size Threshold (cm)",
-        description="Objects smaller than this size will be scaled up by 100x (1 cm = 0.01 m)",
-        default=1,
+        description="Objects smaller than this size (in centimeters) will be scaled up by 100x",
+        default=5.0,  # 1 cm
         min=0.0,
     )
 
@@ -52,7 +52,7 @@ class OBJECT_OT_MoxFixObject(Operator):
         return context.mode == 'OBJECT' and len(context.selected_objects) > 0
     
     def execute(self, context):
-        # Устанавливаем Unit Scale (например, 0.01 для сантиметров в метрах)
+        # Force unit settings to centimeters
         context.scene.unit_settings.scale_length = 0.01
         context.scene.unit_settings.length_unit = 'CENTIMETERS'
 
@@ -61,19 +61,14 @@ class OBJECT_OT_MoxFixObject(Operator):
         library_path = addon_prefs.library_path
         size_threshold = addon_prefs.size_threshold
         
-        # Проверяем единицы измерения сцены
-        unit_system = context.scene.unit_settings.length_unit
-        # Порог всегда в метрах (0.01 м = 1 см)
-        effective_threshold = size_threshold  # 0.01 м по умолчанию
-        
-        # Ищем материал среди всех материалов, проверяя связь с библиотекой
+        # Find material in linked libraries
         material = None
         for mat in bpy.data.materials:
             if mat.name == material_name and mat.library is not None:
                 material = mat
                 break
         
-        # Если материал не найден и указан путь к библиотеке, пробуем импортировать
+        # Import material from library path if not found
         if not material and library_path and os.path.exists(library_path):
             try:
                 with bpy.data.libraries.load(library_path, link=True) as (data_from, data_to):
@@ -94,27 +89,39 @@ class OBJECT_OT_MoxFixObject(Operator):
         scaled_objects = 0
         for obj in context.selected_objects:
             if obj.type == 'MESH':
-                # Вызываем fix_uv для нормализации UV
+                # Set object as active
+                bpy.context.view_layer.objects.active = obj
+                
+                # Fix UV
                 try:
-                    bpy.context.view_layer.objects.active = obj
                     bpy.ops.object.fix_uv()
                 except Exception as e:
                     self.report({'WARNING'}, f"Failed to fix UV for {obj.name}: {str(e)}")
                 
-                # Проверяем размеры объекта (obj.dimensions в метрах)
-                max_dimension = max(obj.dimensions)
-                # Для отладки: выводим размер объекта и порог
-                print(f"Object {obj.name}: max_dimension={max_dimension} m, threshold={effective_threshold} m")
-
-                # Сравниваем размеры в метрах
-                if max_dimension < effective_threshold:
+                # Switch to Edit Mode for normals operations
+                bpy.ops.object.mode_set(mode='EDIT')
+                try:
+                    # Clear custom split normals
+                    bpy.ops.mesh.customdata_custom_splitnormals_clear()
+                    # Select all faces for normals recalculation
+                    bpy.ops.mesh.select_all(action='SELECT')
+                    # Recalculate normals outside
+                    bpy.ops.mesh.normals_make_consistent(inside=False) #recalc normals
+                    # Deselect all faces
+                    bpy.ops.mesh.select_all(action='DESELECT')
+                except Exception as e:
+                    self.report({'WARNING'}, f"Failed to process normals for {obj.name}: {str(e)}")
+                # Switch back to Object Mode
+                bpy.ops.object.mode_set(mode='OBJECT')
+                
+                # Check object size (dimensions in meters, convert to cm)
+                if max(obj.dimensions) < size_threshold:
                     obj.scale *= 100
                     bpy.context.view_layer.objects.active = obj
                     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
                     scaled_objects += 1
-                    print(f"Scaled object {obj.name} by 100x")
                 
-                # Применяем материал
+                # Apply material
                 obj.data.materials.clear()
                 obj.data.materials.append(material)
                 obj.data.materials[0].use_fake_user = True
@@ -123,7 +130,6 @@ class OBJECT_OT_MoxFixObject(Operator):
         return {'FINISHED'}
 
 def menu_func(self, context):
-    print("Adding Mox Fix Object to context menu")  # Отладка
     self.layout.operator(OBJECT_OT_MoxFixObject.bl_idname, text="Mox Fix Object")
     self.layout.separator()
 
@@ -131,13 +137,11 @@ def register():
     bpy.utils.register_class(MoxFixObjectPreferences)
     bpy.utils.register_class(OBJECT_OT_MoxFixObject)
     bpy.types.VIEW3D_MT_object_context_menu.prepend(menu_func)
-    print("Mox Fix Object addon registered")  # Отладка
 
 def unregister():
     bpy.types.VIEW3D_MT_object_context_menu.remove(menu_func)
     bpy.utils.unregister_class(OBJECT_OT_MoxFixObject)
     bpy.utils.unregister_class(MoxFixObjectPreferences)
-    print("Mox Fix Object addon unregistered")  # Отладка
 
 if __name__ == "__main__":
     register()
