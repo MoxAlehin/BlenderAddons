@@ -111,6 +111,8 @@ class OBJECT_OT_MoxFixObject(Operator):
                     bpy.ops.mesh.select_all(action='DESELECT')
                 except Exception as e:
                     self.report({'WARNING'}, f"Failed to process normals for {obj.name}: {str(e)}")
+
+                context.scene.tool_settings.use_uv_select_sync = True
                 # Switch back to Object Mode
                 bpy.ops.object.mode_set(mode='OBJECT')
                 
@@ -125,6 +127,8 @@ class OBJECT_OT_MoxFixObject(Operator):
                 obj.data.materials.clear()
                 obj.data.materials.append(material)
                 obj.data.materials[0].use_fake_user = True
+
+        context.scene.tool_settings.use_uv_select_sync = True
         
         self.report({'INFO'}, f"Processed {len(context.selected_objects)} objects, scaled {scaled_objects}, applied '{material_name}'")
         return {'FINISHED'}
