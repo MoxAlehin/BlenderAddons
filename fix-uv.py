@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Fix UV Plugin",
     "author": "Your Name",
-    "version": (1, 5, 3),
+    "version": (1, 5, 4),
     "blender": (3, 0, 0),
     "location": "View3D > Tools > Fix UV, Object Context Menu",
     "description": "Fixes UV channels for selected mesh objects, keeping Unwrap and Gradients at the top",
@@ -50,17 +50,6 @@ class OBJECT_OT_FixUV(Operator):
 
             uv_layers = obj.data.uv_layers
 
-            # Check for existence of Unwrap and Gradients UV maps
-            unwrap_exists = any(layer.name == "Unwrap" for layer in uv_layers)
-            gradients_exists = any(layer.name == "Gradients" for layer in uv_layers)
-            gradients_is_render = any(layer.name == "Gradients" and layer.active_render for layer in uv_layers)
-
-            # If Unwrap and Gradients exist, are in correct order, and Gradients is active for rendering
-            if unwrap_exists and gradients_exists and gradients_is_render and \
-               uv_layers[0].name == "Unwrap" and uv_layers[1].name == "Gradients":
-                uv_layers.active_index = 1  # Set Gradients as active for display
-                continue
-
             # Store data of the first UV channel before any modifications
             first_uv_data = None
             first_uv_name = None
@@ -75,26 +64,19 @@ class OBJECT_OT_FixUV(Operator):
                 gradients_layer = uv_layers.new(name="Gradients")
             else:
                 # UV channels exist
-                if not gradients_exists and first_uv_name != "Unwrap":
+                if first_uv_name != "Unwrap":
                     # Rename the first channel to Gradients
                     uv_layers[0].name = "Gradients"
-                elif not gradients_exists:
+                else:
                     # Create Gradients if the first channel is Unwrap
                     uv_layers.new(name="Gradients")
                 # Ensure Gradients exists
                 gradients_layer = next(layer for layer in uv_layers if layer.name == "Gradients")
 
-                if not unwrap_exists:
-                    # Create Unwrap
-                    unwrap_layer = uv_layers.new(name="Unwrap")
-                    if first_uv_data:
-                        for i, uv_coord in enumerate(first_uv_data):
-                            unwrap_layer.data[i].uv = uv_coord
-                else:
-                    unwrap_layer = next(layer for layer in uv_layers if layer.name == "Unwrap")
-
-            # Store data of Unwrap and Gradients for reordering
-            temp_uv_data = {layer.name: [(uv.uv[0], uv.uv[1]) for uv in layer.data] for layer in uv_layers if layer.name in ["Unwrap", "Gradients"]}
+            # Store data of Gradients for reordering
+            temp_uv_data = {}
+            if gradients_layer:
+                temp_uv_data["Gradients"] = [(uv.uv[0], uv.uv[1]) for uv in gradients_layer.data]
 
             # Clear all UV channels
             while len(uv_layers) > 0:
@@ -102,12 +84,7 @@ class OBJECT_OT_FixUV(Operator):
 
             # Create UV channels in the correct order: Unwrap first, Gradients second
             unwrap_layer = uv_layers.new(name="Unwrap")
-            if "Unwrap" in temp_uv_data:
-                for i, uv_coord in enumerate(temp_uv_data["Unwrap"]):
-                    unwrap_layer.data[i].uv = uv_coord
-            elif first_uv_data:
-                for i, uv_coord in enumerate(first_uv_data):
-                    unwrap_layer.data[i].uv = uv_coord
+            # Unwrap will be populated by Smart UV Project, no need to copy data
 
             gradients_layer = uv_layers.new(name="Gradients")
             if "Gradients" in temp_uv_data:
@@ -133,6 +110,7 @@ class OBJECT_OT_FixUV(Operator):
             uv_layers.active_index = 0  # Unwrap (first)
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.smart_project(angle_limit=radians(66))
+            bpy.context.scene.tool_settings.use_uv_select_sync = True
             
             # Return to Object Mode
             bpy.ops.object.mode_set(mode='OBJECT')
