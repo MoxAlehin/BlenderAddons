@@ -2,299 +2,360 @@ import bpy
 import math
 from mathutils import Vector
 from bpy.types import Operator
-from bpy.props import FloatProperty, BoolProperty, EnumProperty
+from bpy.props import FloatProperty, BoolProperty, EnumProperty, IntProperty
 from operator import itemgetter
+from collections import defaultdict
 
 bl_info = {
     "name": "Distribute Objects",
     "author": "Your Name",
-    "version": (2, 9),
+    "version": (2, 18),
     "blender": (4, 4, 0),
     "location": "Object > Distribute Objects or Search > Distribute Objects",
-    "description": "Distributes selected objects in rows to minimize bounding box",
+    "description": "Distributes selected objects in rows with central object at origin",
     "category": "Object",
 }
 
 def get_object_size(obj):
-    """Calculate the size of an object, including its children, based on combined bounding box."""
-    # Collect all mesh objects (parent and children)
+    """Calculate the size and bounding box center of an object, including its children and Mirror modifier."""
     mesh_objects = [obj] if obj.type == 'MESH' else []
     for child in obj.children_recursive:
         if child.type == 'MESH':
             mesh_objects.append(child)
     
-    if not mesh_objects:
-        # Fallback for non-mesh objects without mesh children
-        dims = max(obj.dimensions), max(obj.dimensions), max(obj.dimensions)
-        return dims[0], dims[1], dims[2], 0.0, dims[2], dims[2] / 2
+    # Check for Mirror modifier on the object
+    mirror_mod = None
+    if obj.type == 'MESH':
+        for mod in obj.modifiers:
+            if mod.type == 'MIRROR' and mod.show_viewport:
+                mirror_mod = mod
+                break
     
-    # Compute combined bounding box in world space
+    if not mesh_objects:
+        # Handle non-mesh objects without children
+        dims = [max(obj.dimensions)] * 3
+        if mirror_mod:
+            if mirror_mod.use_axis[0]:
+                dims[0] *= 2  # Double width for X mirror
+            if mirror_mod.use_axis[1]:
+                dims[1] *= 2  # Double depth for Y mirror
+            if mirror_mod.use_axis[2]:
+                dims[2] *= 2  # Double height for Z mirror
+        center_x = center_y = 0.0
+        return dims[0], dims[1], dims[2], 0.0, 0.0, 0.0, dims[2], dims[2] / 2
+    
     all_bbox = []
     for mesh_obj in mesh_objects:
+        # Get bounding box in world space
         bbox = [mesh_obj.matrix_world @ Vector(corner) for corner in mesh_obj.bound_box]
+        
+        # Apply Mirror modifier effect if present
+        mirror_mod = None
+        for mod in mesh_obj.modifiers:
+            if mod.type == 'MIRROR' and mod.show_viewport:
+                mirror_mod = mod
+                break
+        
+        if mirror_mod:
+            mirrored_bbox = []
+            for point in bbox:
+                mirrored_point = point.copy()
+                if mirror_mod.use_axis[0]:
+                    mirrored_point.x = -point.x
+                    mirrored_bbox.append(mirrored_point)
+                if mirror_mod.use_axis[1]:
+                    mirrored_point.y = -point.y
+                    mirrored_bbox.append(mirrored_point)
+                if mirror_mod.use_axis[2]:
+                    mirrored_point.z = -point.z
+                    mirrored_bbox.append(mirrored_point)
+            bbox.extend(mirrored_bbox)
+        
         all_bbox.extend(bbox)
     
-    # Calculate dimensions and Z bounds
     width = max(v.x for v in all_bbox) - min(v.x for v in all_bbox)
     depth = max(v.y for v in all_bbox) - min(v.y for v in all_bbox)
     height = max(v.z for v in all_bbox) - min(v.z for v in all_bbox)
     min_z = min(v.z for v in all_bbox)
     max_z = max(v.z for v in all_bbox)
+    center_x = (max(v.x for v in all_bbox) + min(v.x for v in all_bbox)) / 2
+    center_y = (max(v.y for v in all_bbox) + min(v.y for v in all_bbox)) / 2
     center_z = (min_z + max_z) / 2
     
-    return width, depth, height, min_z, max_z, center_z
+    return width, depth, height, center_x, center_y, min_z, max_z, center_z
 
-def sort_objects(objects_with_sizes, sort_method, center_active, active_object):
-    """Sort objects based on specified method."""
+def sort_objects(objects_with_sizes, sort_method, center_active, active_object, group_by_name, name_prefix_length):
+    """Sort objects based on specified method, optionally grouping by name prefix."""
     if center_active and active_object:
-        # Remove active object to place it in the center later
         active_item = next((obj, size) for obj, size in objects_with_sizes if obj == active_object)
         objects_with_sizes = [item for item in objects_with_sizes if item[0] != active_object]
     else:
         active_item = None
     
-    # Define sorting key
     if sort_method == 'WIDTH':
-        key_func = lambda x: x[1][0]  # Width (X)
+        key_func = lambda x: x[1][0]
     elif sort_method == 'X_PLUS_Y':
-        key_func = lambda x: x[1][0] + x[1][1]  # X + Y
+        key_func = lambda x: x[1][0] + x[1][1]
     elif sort_method == 'X_PLUS_Y_PLUS_Z':
-        key_func = lambda x: x[1][0] + x[1][1] + x[1][2]  # X + Y + Z
+        key_func = lambda x: x[1][0] + x[1][1] + x[1][2]
     elif sort_method == 'AVG':
-        key_func = lambda x: sum(x[1][:3]) / 3  # Average of X, Y, Z
+        key_func = lambda x: sum(x[1][:3]) / 3
     elif sort_method == 'MAX':
-        key_func = lambda x: max(x[1][:3])  # Max of X, Y, Z
+        key_func = lambda x: max(x[1][:3])
     
-    # Sort objects (descending, largest first)
-    sorted_objects = sorted(objects_with_sizes, key=key_func, reverse=True)
+    if group_by_name:
+        groups = defaultdict(list)
+        for obj, size in objects_with_sizes:
+            prefix = obj.name[:min(len(obj.name), name_prefix_length)]
+            groups[prefix].append((obj, size))
+        
+        group_sizes = []
+        for prefix, group in groups.items():
+            avg_size = sum(key_func(item) for item in group) / len(group)
+            group_sizes.append((prefix, avg_size, group))
+        
+        sorted_groups = sorted(group_sizes, key=lambda x: x[1], reverse=True)
+        
+        sorted_objects = []
+        for prefix, _, group in sorted_groups:
+            sorted_group = sorted(group, key=key_func, reverse=True)
+            sorted_objects.extend(sorted_group)
+    else:
+        sorted_objects = sorted(objects_with_sizes, key=key_func, reverse=True)
     
     if active_item:
-        sorted_objects.insert(0, active_item)  # Place active object first for central placement
+        sorted_objects.insert(0, active_item)
     
     return sorted_objects
 
-def distribute_objects(spacing, center_active, sort_method, align_method, z_alignment):
-    """Distribute objects in rows to minimize bounding box with equal row widths."""
-    # Deselect all parented objects
+def distribute_objects(spacing, center_active, sort_method, z_alignment, group_by_name, name_prefix_length):
+    """Distribute objects in rows with central object at origin."""
     for obj in bpy.context.selected_objects:
         if obj.parent:
             obj.select_set(False)
     
-    # Get remaining selected objects
     selected_objects = [obj for obj in bpy.context.selected_objects if obj.type in ('MESH', 'ARMATURE')]
     if not selected_objects:
         return
     
     active_object = bpy.context.active_object if center_active and bpy.context.active_object in selected_objects else None
     
-    # Calculate sizes
     objects_with_sizes = [(obj, get_object_size(obj)) for obj in selected_objects]
     
-    # Sort objects
-    sorted_objects = sort_objects(objects_with_sizes, sort_method, center_active, active_object)
+    sorted_objects = sort_objects(objects_with_sizes, sort_method, center_active, active_object, group_by_name, name_prefix_length)
     
-    # Determine number of rows for square layout (~sqrt(N))
     num_objects = len(selected_objects)
     num_rows = max(1, round(math.sqrt(num_objects)))
     central_row_idx = num_rows // 2
     
-    # Calculate target row width, adjust for small spacing
     total_width = sum(size[0] for _, size in sorted_objects) + max(spacing, 0.1) * (num_objects - 1)
     target_row_width = total_width / num_rows if num_rows > 0 else total_width
     
-    # Distribute objects into rows to match target row width
     rows = [[] for _ in range(num_rows)]
     if center_active and active_object:
-        # Reserve active object for central row
         active_item = next((obj, size) for obj, size in sorted_objects if obj == active_object)
         sorted_objects = [item for item in sorted_objects if item[0] != active_object]
         rows[central_row_idx].append(active_item)
     
-    # Distribute remaining objects
-    current_row_idx = 0
-    current_width = sum(size[0] for _, size in rows[current_row_idx]) if rows[current_row_idx] else 0
-    
-    for obj, size in sorted_objects:
-        obj_width = size[0]
-        # Try to add to current row
-        if current_width + obj_width + (len(rows[current_row_idx]) * max(spacing, 0.1)) <= target_row_width * 1.1 or not rows[current_row_idx]:
-            rows[current_row_idx].append((obj, size))
-            current_width += obj_width
-        else:
-            current_row_idx += 1
-            if current_row_idx >= num_rows:
-                # Distribute remaining objects to existing rows
-                current_row_idx = 0
+    if group_by_name:
+        groups = defaultdict(list)
+        for obj, size in sorted_objects:
+            prefix = obj.name[:min(len(obj.name), name_prefix_length)]
+            groups[prefix].append((obj, size))
+        
+        sorted_groups = []
+        for obj, size in sorted_objects:
+            prefix = obj.name[:min(len(obj.name), name_prefix_length)]
+            if prefix in groups:
+                sorted_groups.append((prefix, groups[prefix]))
+                del groups[prefix]
+        
+        current_row_idx = 0
+        current_width = sum(size[0] for _, size in rows[current_row_idx]) if rows[current_row_idx] else 0
+        
+        for prefix, group in sorted_groups:
+            group_width = sum(size[0] for _, size in group) + max(spacing, 0.1) * (len(group) - 1)
+            if current_width + group_width <= target_row_width * 1.1 or not rows[current_row_idx]:
+                rows[current_row_idx].extend(group)
+                current_width += group_width
+            else:
+                current_row_idx = (current_row_idx + 1) % num_rows
                 current_width = sum(size[0] for _, size in rows[current_row_idx]) if rows[current_row_idx] else 0
+                rows[current_row_idx].extend(group)
+                current_width += group_width
+    else:
+        current_row_idx = 0
+        current_width = sum(size[0] for _, size in rows[current_row_idx]) if rows[current_row_idx] else 0
+        
+        for obj, size in sorted_objects:
+            obj_width = size[0]
+            if current_width + obj_width + (len(rows[current_row_idx]) * max(spacing, 0.1)) <= target_row_width * 1.1 or not rows[current_row_idx]:
                 rows[current_row_idx].append((obj, size))
                 current_width += obj_width
             else:
+                current_row_idx = (current_row_idx + 1) % num_rows
+                current_width = sum(size[0] for _, size in rows[current_row_idx]) if rows[current_row_idx] else 0
                 rows[current_row_idx].append((obj, size))
-                current_width = obj_width
+                current_width += obj_width
     
-    # Reverse rows to place largest objects in back (-Y)
     rows = rows[::-1]
     
-    # Adjust central row
     central_row = rows[central_row_idx]
     
     if central_row and center_active and active_object:
-        # Ensure active object is in the middle
         try:
             active_item = next((obj, size) for obj, size in central_row if obj == active_object)
             central_row.remove(active_item)
             mid_idx = len(central_row) // 2
             central_row.insert(mid_idx, active_item)
         except StopIteration:
-            pass  # Active object already handled
+            pass
     elif central_row and not center_active:
-        # Place largest object in the middle
         max_obj = max(central_row, key=lambda x: x[1][0])
         central_row.remove(max_obj)
         mid_idx = len(central_row) // 2
         central_row.insert(mid_idx, max_obj)
     
     # Select reference object
-    reference_obj = next((obj, size) for obj, size in central_row if obj == active_object) if center_active and active_object else central_row[len(central_row) // 2] if central_row else sorted_objects[0]
-    reference_idx = next(i for i, (obj, _) in enumerate(central_row) if obj == reference_obj[0]) if central_row else 0
-    print(f"Central row: {len(central_row)} objects, reference_idx: {reference_idx}")
+    if central_row:
+        if center_active and active_object:
+            reference_obj = next((obj, size) for obj, size in central_row if obj == active_object)
+        else:
+            mid_idx = len(central_row) // 2
+            reference_obj = central_row[mid_idx]
+        reference_idx = next(i for i, (obj, _) in enumerate(central_row) if obj == reference_obj[0])
+    else:
+        reference_obj = sorted_objects[0]
+        reference_idx = 0
     
-    # Calculate Y positions for rows (central row at Y=0, largest in back)
-    row_y_positions = []
+    print(f"Central row: {len(central_row)} objects, reference_idx: {reference_idx}, reference_obj: {reference_obj[0].name}")
+    
+    row_y_positions = [0] * num_rows
     max_row_width = 0
     row_widths = []
+    row_depths = []
     
     for row_idx in range(num_rows):
         row = rows[row_idx]
         row_depth = max(size[1] for _, size in row) if row else 0
-        # Calculate row width for alignment
         row_width = sum(size[0] for _, size in row) + max(spacing, 0.1) * (len(row) - 1) if row else 0
         row_widths.append(row_width)
+        row_depths.append(row_depth)
         max_row_width = max(max_row_width, row_width)
-        
-        # Place largest objects in back (-Y), smallest in front (+Y)
-        if row_idx < central_row_idx:
-            # Rows behind central row (more negative Y)
-            y = -sum(max(size[1] for _, size in rows[j]) + max(spacing, 0.1) for j in range(row_idx + 1, central_row_idx + 1))
-        elif row_idx == central_row_idx:
+    
+    # Calculate Y positions to prevent overlap
+    for row_idx in range(num_rows):
+        if row_idx == central_row_idx:
+            row_y_positions[row_idx] = 0
+        elif row_idx < central_row_idx:
             y = 0
+            for j in range(row_idx + 1, central_row_idx + 1):
+                if rows[j]:
+                    prev_depth = max(size[1] for _, size in rows[j]) if j == central_row_idx else row_depths[j]
+                    curr_depth = row_depths[row_idx] if j == row_idx + 1 else row_depths[j - 1]
+                    y -= (prev_depth / 2 + curr_depth / 2 + max(spacing, 0.1))
+            row_y_positions[row_idx] = y
         else:
-            # Rows in front of central row (positive Y)
-            y = sum(max(size[1] for _, size in rows[j]) + max(spacing, 0.1) for j in range(central_row_idx, row_idx))
-        row_y_positions.append(y)
+            y = 0
+            for j in range(central_row_idx, row_idx):
+                if rows[j]:
+                    prev_depth = row_depths[j]
+                    curr_depth = row_depths[row_idx] if j == row_idx - 1 else row_depths[j + 1]
+                    y += (prev_depth / 2 + curr_depth / 2 + max(spacing, 0.1))
+            row_y_positions[row_idx] = y
     
-    print(f"Row widths: {row_widths}")
+    print(f"Initial row widths: {row_widths}")
+    print(f"Row depths: {row_depths}")
+    print(f"Y positions: {row_y_positions}")
     
-    # Calculate X positions for each row
     positions = []
     
-    # First, calculate positions for central row
-    central_row_positions = [None] * len(central_row) if central_row else [None]
-    ref_width = reference_obj[1][0]
-    central_row_positions[reference_idx] = (0, 0) if central_row else (0, 0)
-    
-    if central_row:
-        left_x = -(ref_width / 2 + max(spacing, 0.1))
-        right_x = ref_width / 2 + max(spacing, 0.1)
-        left_idx = reference_idx - 1
-        right_idx = reference_idx + 1
-        
-        for i in range(len(central_row)):
-            if i != reference_idx:
-                obj, (width, depth, height, min_z, max_z, center_z) = central_row[i]
-                if i < reference_idx:
-                    x = left_x - width / 2
-                    central_row_positions[left_idx] = (x, 0)
-                    left_x -= (width / 2 + max(spacing, 0.1))
-                    left_idx -= 1
-                else:
-                    x = right_x + width / 2
-                    central_row_positions[right_idx] = (x, 0)
-                    right_x += (width / 2 + max(spacing, 0.1))
-                    right_idx += 1
-    else:
-        central_row_positions[0] = (0, 0)
-    
-    central_x_positions = [p[0] for p in central_row_positions if p is not None]
-    print(f"Central row X positions: {central_x_positions}")
-    
-    # Process all rows
+    # Distribute objects in rows
     for row_idx, row in enumerate(rows):
-        num_objects_in_row = len(row)
-        row_positions = [None] * num_objects_in_row if row else [None]
+        if not row:
+            positions.extend([(0, row_y_positions[row_idx])] if row_idx == central_row_idx else [])
+            continue
         
-        if row_idx == central_row_idx:
-            row_positions = central_row_positions
+        num_objects_in_row = len(row)
+        total_object_width = sum(size[0] for _, size in row)
+        
+        # Calculate spacing to equalize row widths
+        if num_objects_in_row > 1:
+            spacing_adjusted = (max_row_width - total_object_width) / (num_objects_in_row - 1)
         else:
-            if num_objects_in_row == len(central_row) and row:
-                # Align with central row
-                for i in range(num_objects_in_row):
-                    obj, (width, depth, height, min_z, max_z, center_z) = row[i]
-                    x = central_x_positions[i]
-                    row_positions[i] = (x, row_y_positions[row_idx])
-            else:
-                # Calculate positions based on row width and alignment
-                row_width = row_widths[row_idx] if row_idx < len(row_widths) else 0
-                if align_method == 'LEFT':
-                    start_x = -max_row_width / 2
-                elif align_method == 'RIGHT':
-                    start_x = max_row_width / 2 - row_width
-                elif align_method == 'CENTER':
-                    start_x = (max_row_width - row_width) / 2 - max_row_width / 2
-                elif align_method == 'JUSTIFY' and num_objects_in_row > 1:
-                    # Distribute objects evenly across max_row_width
-                    spacing_adjusted = (max_row_width - sum(size[0] for _, size in row)) / (num_objects_in_row - 1) if row else max(spacing, 0.1)
-                    start_x = -max_row_width / 2
-                    for i in range(num_objects_in_row):
-                        obj, (width, depth, height, min_z, max_z, center_z) = row[i]
-                        x = start_x + width / 2
-                        row_positions[i] = (x, row_y_positions[row_idx])
-                        start_x += width + spacing_adjusted
-                    positions.extend([p for p in row_positions if p is not None])
-                    continue
-                else:  # JUSTIFY with 1 object or fallback
-                    start_x = (max_row_width - row_width) / 2 - max_row_width / 2
-                
-                for i in range(num_objects_in_row):
-                    obj, (width, depth, height, min_z, max_z, center_z) = row[i]
-                    x = start_x + width / 2
-                    row_positions[i] = (x, row_y_positions[row_idx])
-                    start_x += width + max(spacing, 0.1)
+            spacing_adjusted = max(spacing, 0.1)
+        
+        # Place objects from left to right
+        start_x = -max_row_width / 2
+        row_positions = [None] * num_objects_in_row
+        
+        for i in range(num_objects_in_row):
+            obj, (width, depth, height, center_x, center_y, min_z, max_z, center_z) = row[i]
+            x = start_x + width / 2
+            row_positions[i] = (x, row_y_positions[row_idx])
+            start_x += width + spacing_adjusted
         
         positions.extend([p for p in row_positions if p is not None])
     
-    # Apply positions (move only selected objects)
+    # Adjust all positions so reference object's center is at x=0
+    ref_center_x = None
+    ref_pos_idx = sum(len(r) for r in rows[:central_row_idx]) + reference_idx
+    if positions and ref_pos_idx < len(positions):
+        ref_center_x = positions[ref_pos_idx][0]  # X-coordinate of reference object's center
+        print(f"Reference object center_x before adjustment: {ref_center_x}")
+        
+        # Shift all positions by -ref_center_x
+        positions = [(x - ref_center_x, y) for x, y in positions]
+    
+    # Verify final row widths
+    final_row_widths = []
+    for row_idx, row in enumerate(rows):
+        if row:
+            x_positions = [positions[i][0] for i in range(sum(len(r) for r in rows[:row_idx]), sum(len(r) for r in rows[:row_idx + 1]))]
+            row_width = max(x_positions) - min(x_positions) + max(size[0] for _, size in row)
+            final_row_widths.append(row_width)
+        else:
+            final_row_widths.append(0)
+    
+    print(f"Final row widths: {final_row_widths}")
+    
+    # Apply positions to the center of the bounding box
     assigned_positions = []
     pos_idx = 0
     for row_idx, row in enumerate(rows):
         for obj, size in row:
             x, y = positions[pos_idx]
-            # Adjust Z based on z_alignment
-            min_z, max_z, center_z = size[3], size[4], size[5]
+            center_x, center_y, min_z, max_z, center_z = size[3], size[4], size[5], size[6], size[7]
+            
             if z_alignment == 'PIVOT':
-                z = 0  # Pivot (origin) at Z=0
+                z = 0
             elif z_alignment == 'CENTER':
-                z = -center_z  # Center of bounding box at Z=0
+                z = -center_z
             elif z_alignment == 'BOTTOM':
-                z = -min_z  # Bottom of bounding box at Z=0
+                z = -min_z
             elif z_alignment == 'TOP':
-                z = -max_z  # Top of bounding box at Z=0
-            assigned_positions.append((obj, x, y, z))
+                z = -max_z
+            
+            # Adjust location to align the bounding box center with the target position
+            loc_x = x - center_x
+            loc_y = y - center_y
+            loc_z = z
+            
+            assigned_positions.append((obj, loc_x, loc_y, loc_z))
             pos_idx += 1
     
-    for obj, x, y, z in assigned_positions:
+    for obj, loc_x, loc_y, loc_z in assigned_positions:
+        obj.location.x = loc_x
+        obj.location.y = loc_y
+        obj.location.z = loc_z
+        center_x = loc_x + obj.get('center_x', 0)
+        center_y = loc_y + obj.get('center_y', 0)
+        print(f"Object {obj.name}: x={loc_x}, y={loc_y}, z={loc_z}, center_x={center_x}, center_y={center_y}")
         if obj == reference_obj[0]:
-            obj.location.x = 0
-            obj.location.y = 0
-            obj.location.z = z
-        else:
-            obj.location.x = x
-            obj.location.y = y
-            obj.location.z = z
-        print(f"Object {obj.name}: x={x}, y={y}, z={z}")
+            print(f"Reference object {obj.name} placed at center_x={center_x}, center_y={center_y}")
 
 class OBJECT_OT_DistributeObjects(Operator):
-    """Distribute selected objects in rows to minimize bounding box"""
+    """Distribute selected objects in rows with central object at origin"""
     bl_idname = "object.distribute_objects"
     bl_label = "Distribute Objects"
     bl_options = {'REGISTER', 'UNDO'}
@@ -302,13 +363,13 @@ class OBJECT_OT_DistributeObjects(Operator):
     spacing: FloatProperty(
         name="Spacing",
         description="Minimum distance between object bounding boxes",
-        default=0.0,
+        default=5.0,
         min=0.0
     )
     
     center_active: BoolProperty(
         name="Center Active Object",
-        description="Use active object as the reference object at the center",
+        description="Use active object as the reference object at the origin",
         default=False
     )
     
@@ -325,18 +386,6 @@ class OBJECT_OT_DistributeObjects(Operator):
         default='AVG'
     )
     
-    align_method: EnumProperty(
-        name="Alignment",
-        description="Alignment of objects in rows",
-        items=[
-            ('LEFT', "Left", "Align objects to the left"),
-            ('CENTER', "Center", "Center objects in the row"),
-            ('RIGHT', "Right", "Align objects to the right"),
-            ('JUSTIFY', "Justify", "Distribute objects evenly across the row"),
-        ],
-        default='JUSTIFY'
-    )
-    
     z_alignment: EnumProperty(
         name="Z Alignment",
         description="How to align objects along Z axis",
@@ -349,12 +398,42 @@ class OBJECT_OT_DistributeObjects(Operator):
         default='BOTTOM'
     )
     
+    group_by_name: BoolProperty(
+        name="Group by Name",
+        description="Group objects by the prefix of their names",
+        default=True
+    )
+    
+    name_prefix_length: IntProperty(
+        name="Name Prefix Length",
+        description="Number of characters to consider for grouping by name",
+        default=5,
+        min=1
+    )
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "spacing")
+        layout.prop(self, "center_active")
+        layout.prop(self, "sort_method")
+        layout.prop(self, "z_alignment")
+        layout.prop(self, "group_by_name")
+        if self.group_by_name:
+            layout.prop(self, "name_prefix_length")
+    
     @classmethod
     def poll(cls, context):
         return len([obj for obj in context.selected_objects if obj.type in ('MESH', 'ARMATURE')]) > 0
     
     def execute(self, context):
-        distribute_objects(self.spacing, self.center_active, self.sort_method, self.align_method, self.z_alignment)
+        distribute_objects(
+            self.spacing,
+            self.center_active,
+            self.sort_method,
+            self.z_alignment,
+            self.group_by_name,
+            self.name_prefix_length
+        )
         return {'FINISHED'}
 
 def menu_func(self, context):
