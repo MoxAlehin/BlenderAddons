@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Fix UV Plugin",
     "author": "Your Name",
-    "version": (1, 5, 4),
+    "version": (1, 5, 6),
     "blender": (3, 0, 0),
     "location": "View3D > Tools > Fix UV, Object Context Menu",
     "description": "Fixes UV channels for selected mesh objects, keeping Unwrap and Gradients at the top",
@@ -50,12 +50,30 @@ class OBJECT_OT_FixUV(Operator):
 
             uv_layers = obj.data.uv_layers
 
-            # Store data of the first UV channel before any modifications
+            # Check if the object has exactly three UV maps with Unwrap and Gradients in correct order
+            if len(uv_layers) == 3 and uv_layers[0].name == "Unwrap" and uv_layers[1].name == "Gradients":
+                # Only recalculate Unwrap with Smart UV Project
+                uv_layers.active_index = 0  # Set Unwrap as active
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.reveal()  # Unhide all faces
+                bpy.context.scene.tool_settings.use_uv_select_sync = False
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.uv.smart_project(angle_limit=radians(66))
+                bpy.ops.object.mode_set(mode='OBJECT')
+                uv_layers.active_index = 1  # Set Gradients as active for display
+                continue
+
+            # Store data of the first and second UV channels before any modifications
             first_uv_data = None
             first_uv_name = None
+            second_uv_data = None
+            second_uv_name = None
             if len(uv_layers) > 0:
                 first_uv_name = uv_layers[0].name
                 first_uv_data = [(uv.uv[0], uv.uv[1]) for uv in uv_layers[0].data]
+                if len(uv_layers) > 1:
+                    second_uv_name = uv_layers[1].name
+                    second_uv_data = [(uv.uv[0], uv.uv[1]) for uv in uv_layers[1].data]
 
             # Create or configure UV channels
             if len(uv_layers) == 0:
@@ -70,13 +88,20 @@ class OBJECT_OT_FixUV(Operator):
                 else:
                     # Create Gradients if the first channel is Unwrap
                     uv_layers.new(name="Gradients")
+                    if second_uv_data:
+                        # Use second UV channel's data for Gradients
+                        gradients_layer = uv_layers[1]
+                        for i, uv_coord in enumerate(second_uv_data):
+                            gradients_layer.data[i].uv = uv_coord
                 # Ensure Gradients exists
                 gradients_layer = next(layer for layer in uv_layers if layer.name == "Gradients")
 
-            # Store data of Gradients for reordering
+            # Store data of Gradients and second UV map for reordering
             temp_uv_data = {}
             if gradients_layer:
                 temp_uv_data["Gradients"] = [(uv.uv[0], uv.uv[1]) for uv in gradients_layer.data]
+            if second_uv_name and second_uv_name not in ["Unwrap", "Gradients"]:
+                temp_uv_data[second_uv_name] = second_uv_data
 
             # Clear all UV channels
             while len(uv_layers) > 0:
@@ -95,6 +120,12 @@ class OBJECT_OT_FixUV(Operator):
                 for i, uv_coord in enumerate(first_uv_data):
                     gradients_layer.data[i].uv = uv_coord
 
+            # Restore the second UV map if it exists
+            if second_uv_name and second_uv_name not in ["Unwrap", "Gradients"]:
+                second_layer = uv_layers.new(name=second_uv_name)
+                for i, uv_coord in enumerate(temp_uv_data[second_uv_name]):
+                    second_layer.data[i].uv = uv_coord
+
             # Set active_render: disable for all except Gradients
             for layer in uv_layers:
                 layer.active_render = (layer.name == "Gradients")
@@ -110,7 +141,6 @@ class OBJECT_OT_FixUV(Operator):
             uv_layers.active_index = 0  # Unwrap (first)
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.smart_project(angle_limit=radians(66))
-            bpy.context.scene.tool_settings.use_uv_select_sync = True
             
             # Return to Object Mode
             bpy.ops.object.mode_set(mode='OBJECT')
