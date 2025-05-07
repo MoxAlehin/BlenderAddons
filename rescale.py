@@ -100,6 +100,17 @@ class VIEW3D_PT_Rescale(Panel):
         layout = self.layout
         layout.operator("object.rescale", text="Rescale Selected Objects")
 
+# Информация об аддоне
+bl_info = {
+    "name": "Rescale Object",
+    "author": "Your Name",
+    "version": (1, 0),
+    "blender": (4, 4, 0),
+    "location": "View3D > Sidebar > Tool > Rescale Tool, Search (F3)",
+    "description": "Rescale objects to a specified size along a chosen axis",
+    "category": "Object",
+}
+
 # Регистрация классов
 classes = (
     OBJECT_OT_Rescale,
@@ -111,16 +122,26 @@ def menu_func(self, context):
 
 def register():
     for cls in classes:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+            print(f"Registered class: {cls.__name__}")
+        except Exception as e:
+            print(f"Failed to register class {cls.__name__}: {e}")
     # Добавляем в меню поиска (F3)
     bpy.types.VIEW3D_MT_object_context_menu.append(menu_func)
     bpy.types.VIEW3D_MT_object.append(menu_func)
+    print("Rescale plugin registered successfully")
 
 def unregister():
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+            print(f"Unregistered class: {cls.__name__}")
+        except Exception as e:
+            print(f"Failed to unregister class {cls.__name__}: {e}")
     bpy.types.VIEW3D_MT_object_context_menu.remove(menu_func)
     bpy.types.VIEW3D_MT_object.remove(menu_func)
+    print("Rescale plugin unregistered")
 
 if __name__ == "__main__":
     register()
