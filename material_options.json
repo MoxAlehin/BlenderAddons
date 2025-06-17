@@ -1,60 +1,311 @@
 {
-    "None": "#000000",
-    "Light Wood": "#220d00",
-    "Dark Wood": "#070200",
-    "Foliage": "#208705",
-    "Dirt": "#060200",
-    "Stone": "#15191a",
-    "Concrete": "#292929",
-    "Terracota": "#eb321c",
-    "Iron": "#1f2325",
-    "Aluminum": "#d0d5db",
-    "Copper": "#462103",
-    "Bronze": "#ce5308",
-    "Brass": "#75610d",
-    "Silver": "#c0c0c0",
-    "Gold": "#bc8302",
-    "Plastic": "#787b7c",
-    "Cardboard": "#361a00",
-    "Display": "#59800f",
-    "Chocolate": "#070200",
-    "Military": "#030d00",
-    "Olive": "#636b2f",
-    "Paper": "#ffffff",
-    "Glass": "#448c8c",
-    "Poop": "#1b0900",
-    "PCB": "#001b08",
-    "Ceramic": "#8f8787",
-    "Leather": "#0e0400",
-    "Brick": "#290300",
-    "Bone": "#959595",
-    "Rubber": "#050505",
-    "Cash": "#324b1a",
-    "Clay": "#571305",
-    "Textile": "#b4b7a7",
-    "Danger Color": "#460101",
-    "Warning Color": "#ff5f00",
-    "Info Color": "#005200",
-    "Dark Plastic": "#0c0c0c",
-    "Bakery": "#602603",
-    "Blood": "#360101",
-    "Wax": "#e4c58c",
-    "Rope": "#090400",
-    "Hay": "#ffb117",
-    "Sand": "#ff720c",
-    "Red": "#ff0000",
-    "Orange": "#ff2100",
-    "Yellow": "#ffff00",
-    "Green": "#003700",
-    "Cyan": "#00ffff",
-    "Blue": "#0d3eff",
-    "Purple": "#370037",
-    "Pink": "#ff35de",
-    "Brown": "#5f0505",
-    "Gray": "#373737",
-    "Black": "#000000",
-    "White": "#c3c3c3",
-    "Beige": "#e8e8b6",
-    "Khaki": "#254404",
-    "Turquoise": "#0dbea0"
+    "materials": [
+        {
+            "id": 9,
+            "name": "Aluminum",
+            "color": "#d0d5db"
+        },
+        {
+            "id": 39,
+            "name": "Amorphous",
+            "color": "#e4c58c"
+        },
+        {
+            "id": 29,
+            "name": "Bone",
+            "color": "#959595"
+        },
+        {
+            "id": 12,
+            "name": "Brass",
+            "color": "#75610d"
+        },
+        {
+            "id": 27,
+            "name": "Brick",
+            "color": "#290300"
+        },
+        {
+            "id": 11,
+            "name": "Bronze",
+            "color": "#ce5308"
+        },
+        {
+            "id": 16,
+            "name": "Cardboard",
+            "color": "#361a00"
+        },
+        {
+            "id": 25,
+            "name": "Ceramic",
+            "color": "#8f8787"
+        },
+        {
+            "id": 31,
+            "name": "Clay",
+            "color": "#571305"
+        },
+        {
+            "id": 6,
+            "name": "Concrete",
+            "color": "#292929"
+        },
+        {
+            "id": 10,
+            "name": "Copper",
+            "color": "#462103"
+        },
+        {
+            "id": 4,
+            "name": "Dirt",
+            "color": "#060200"
+        },
+        {
+            "id": 37,
+            "name": "Dough",
+            "color": "#602603"
+        },
+        {
+            "id": 60,
+            "name": "Flesh",
+            "color": "#74090c"
+        },
+        {
+            "id": 3,
+            "name": "Foliage",
+            "color": "#208705"
+        },
+        {
+            "id": 22,
+            "name": "Glass",
+            "color": "#448c8c"
+        },
+        {
+            "id": 14,
+            "name": "Gold",
+            "color": "#bc8302"
+        },
+        {
+            "id": 41,
+            "name": "Hay",
+            "color": "#ffb117"
+        },
+        {
+            "id": 8,
+            "name": "Iron",
+            "color": "#1f2324"
+        },
+        {
+            "id": 26,
+            "name": "Leather",
+            "color": "#0e0400"
+        },
+        {
+            "id": 21,
+            "name": "Paper",
+            "color": "#ffffff"
+        },
+        {
+            "id": 61,
+            "name": "Peel",
+            "color": "#015c01"
+        },
+        {
+            "id": 15,
+            "name": "Plastic",
+            "color": "#787b7c"
+        },
+        {
+            "id": 23,
+            "name": "Poop",
+            "color": "#1b0900"
+        },
+        {
+            "id": 40,
+            "name": "Rope",
+            "color": "#090400"
+        },
+        {
+            "id": 58,
+            "name": "Rubber",
+            "color": "#050505"
+        },
+        {
+            "id": 42,
+            "name": "Sand",
+            "color": "#ff720c"
+        },
+        {
+            "id": 13,
+            "name": "Silver",
+            "color": "#c0c0c0"
+        },
+        {
+            "id": 5,
+            "name": "Stone",
+            "color": "#15191a"
+        },
+        {
+            "id": 7,
+            "name": "Terracota",
+            "color": "#eb321c"
+        },
+        {
+            "id": 32,
+            "name": "Textile",
+            "color": "#b4b7a7"
+        },
+        {
+            "id": 59,
+            "name": "Water",
+            "color": "#164cff"
+        },
+        {
+            "id": 1,
+            "name": "Wood",
+            "color": "#220d00"
+        }
+    ],
+    "colors": [
+        {
+            "id": 24,
+            "name": "Beige",
+            "color": "#d28158"
+        },
+        {
+            "id": 32,
+            "name": "Black",
+            "color": "#020202"
+        },
+        {
+            "id": 28,
+            "name": "Blood",
+            "color": "#360101"
+        },
+        {
+            "id": 23,
+            "name": "Blue",
+            "color": "#092cb7"
+        },
+        {
+            "id": 22,
+            "name": "Brown",
+            "color": "#5e0c00"
+        },
+        {
+            "id": 33,
+            "name": "Burgundy",
+            "color": "#150000"
+        },
+        {
+            "id": 21,
+            "name": "Cash",
+            "color": "#324b1a"
+        },
+        {
+            "id": 19,
+            "name": "Cyan",
+            "color": "#009797"
+        },
+        {
+            "id": 18,
+            "name": "Danger",
+            "color": "#460101"
+        },
+        {
+            "id": 34,
+            "name": "Dark Blue",
+            "color": "#060a40"
+        },
+        {
+            "id": 16,
+            "name": "Dark Brown",
+            "color": "#070200"
+        },
+        {
+            "id": 17,
+            "name": "Dark Grey",
+            "color": "#0c0c0c"
+        },
+        {
+            "id": 15,
+            "name": "Display",
+            "color": "#59800f"
+        },
+        {
+            "id": 13,
+            "name": "Green",
+            "color": "#003700"
+        },
+        {
+            "id": 2,
+            "name": "Grey",
+            "color": "#373737"
+        },
+        {
+            "id": 12,
+            "name": "Info",
+            "color": "#005200"
+        },
+        {
+            "id": 11,
+            "name": "Khaki",
+            "color": "#254404"
+        },
+        {
+            "id": 27,
+            "name": "Magenta",
+            "color": "#950095"
+        },
+        {
+            "id": 10,
+            "name": "Military",
+            "color": "#030d00"
+        },
+        {
+            "id": 9,
+            "name": "Olive",
+            "color": "#636b2f"
+        },
+        {
+            "id": 8,
+            "name": "Orange",
+            "color": "#ff2100"
+        },
+        {
+            "id": 30,
+            "name": "Pink",
+            "color": "#9a0f8f"
+        },
+        {
+            "id": 25,
+            "name": "Purple",
+            "color": "#370037"
+        },
+        {
+            "id": 5,
+            "name": "Red",
+            "color": "#b40000"
+        },
+        {
+            "id": 6,
+            "name": "Turquoise",
+            "color": "#0dbea0"
+        },
+        {
+            "id": 4,
+            "name": "Warning",
+            "color": "#ff5f00"
+        },
+        {
+            "id": 31,
+            "name": "White",
+            "color": "#e4e4e4"
+        },
+        {
+            "id": 3,
+            "name": "Yellow",
+            "color": "#abab00"
+        }
+    ]
 }
