@@ -1,19 +1,19 @@
-bl_info = {
-    "name": "Color Palette",
-    "author": "Mox Alehin",
-    "version": (2, 24),
-    "blender": (3, 0, 0),
-    "location": "Properties > Object Data > Mesh Info",
-    "description": "Adds four Int pairs and color properties to objects and meshes, with buttons in Object Data Properties",
-    "category": "Object",
-}
-
 import bpy
 from bpy.props import IntProperty, FloatVectorProperty, StringProperty, BoolProperty, EnumProperty
 from bpy.app.handlers import persistent
 import json
 import os
 import colorsys
+
+bl_info = {
+    "name": "Color Palette",
+    "author": "Mox Alehin",
+    "version": (2, 24),
+    "blender": (3, 0, 0),
+    "location": "3D Viewport > Header",
+    "description": "Adds four Int pairs and color properties to objects and meshes, with buttons in 3D Viewport Header",
+    "category": "Object",
+}
 
 # Custom path to material_options.json
 CUSTOM_JSON_PATH = "Brain/Activities/App/Blender/Add-ons/MoxAddons/material_options.json"
@@ -96,12 +96,20 @@ def update_material_items(context):
 # Update modal options list
 def update_modal_options(context):
     context.scene.modal_options.clear()
-    if not context.scene.active_property or not context.mesh:
+    if not context.scene.active_property:
         return
     
-    mesh = context.mesh
+    # Check if active object is a mesh
+    mesh = None
+    if context.active_object and context.active_object.type == 'MESH' and context.active_object.data:
+        mesh = context.active_object.data
+    
+    if not mesh:
+        return
+    
     mode = "materials" if context.scene.active_property.startswith("material_") else "colors"
-    active_id = mesh[context.scene.active_property]
+    # Check if the active_property exists in the mesh
+    active_id = mesh.get(context.scene.active_property, 0)  # Default to 0 if property doesn't exist
     items = MATERIAL_OPTIONS[mode]
     
     # Apply sorting
@@ -292,8 +300,8 @@ def update_color_protect(self, context):
         return
     
     for i in range(1, 5):
-        color_id = mesh[f"color_id_{i}"]
-        material_id = mesh[f"material_{i}"]
+        color_id = mesh.get(f"color_id_{i}", 0)
+        material_id = mesh.get(f"material_{i}", 0)
         color_prop = f"color_{i}"
         
         if color_id != 0:
@@ -365,7 +373,7 @@ class ResetMaterialOperator(bpy.types.Operator):
     index: IntProperty(name="Index")
 
     def execute(self, context):
-        mesh = context.mesh
+        mesh = context.active_object.data if context.active_object and context.active_object.type == 'MESH' else None
         if mesh:
             material_prop = f"material_{self.index}"
             print(f"Resetting {material_prop} to 0")
@@ -383,7 +391,7 @@ class ResetColorOperator(bpy.types.Operator):
     index: IntProperty(name="Index")
 
     def execute(self, context):
-        mesh = context.mesh
+        mesh = context.active_object.data if context.active_object and context.active_object.type == 'MESH' else None
         if mesh:
             color_id_prop = f"color_id_{self.index}"
             print(f"Resetting {color_id_prop} to 0")
@@ -469,6 +477,32 @@ class SetMaterialParamsOperator(bpy.types.Operator):
         global MATERIAL_OPTIONS
         MATERIAL_OPTIONS = load_material_options()
         self.cached_props = {}
+        
+        # Check if active object is a mesh
+        if not context.active_object or context.active_object.type != 'MESH' or not context.active_object.data:
+            self.report({'ERROR'}, "Active object must be a mesh")
+            return {'CANCELLED'}
+        
+        # Initialize properties for active mesh
+        active_mesh = context.active_object.data
+        active_obj = context.active_object
+        for i in range(1, 5):
+            material_prop = f"material_{i}"
+            color_id_prop = f"color_id_{i}"
+            color_prop = f"color_{i}"
+            if material_prop not in active_mesh:
+                active_mesh[material_prop] = 0
+            if material_prop not in active_obj:
+                active_obj[material_prop] = 0
+            if color_id_prop not in active_mesh:
+                active_mesh[color_id_prop] = 0
+            if color_id_prop not in active_obj:
+                active_obj[color_id_prop] = 0
+            if color_prop not in active_mesh:
+                active_mesh[color_prop] = (0.0, 0.0, 0.0)
+            if color_prop not in active_obj:
+                active_obj[color_prop] = (0.0, 0.0, 0.0)
+        
         for obj in context.selected_objects:
             if obj.type == 'MESH' and obj.data:
                 mesh = obj.data
@@ -496,7 +530,7 @@ class SetMaterialParamsOperator(bpy.types.Operator):
 
     def draw(self, context):
         layout = self.layout
-        mesh = context.mesh
+        mesh = context.active_object.data if context.active_object and context.active_object.type == 'MESH' else None
         if not mesh:
             return
 
@@ -510,7 +544,7 @@ class SetMaterialParamsOperator(bpy.types.Operator):
             row = split.row(align=True)
             # Material toggle with reset
             mat_prop = f"material_{i}"
-            mat_id = mesh[mat_prop]
+            mat_id = mesh.get(mat_prop, 0)
             mat_item = next((m for m in MATERIAL_OPTIONS["materials"] if m["id"] == mat_id), {"name": "None"})
             sub = row.split(factor=0.5, align=True)  # Equal split for Mat and Col
             sub_split = sub.split(factor=0.9, align=True)
@@ -518,7 +552,7 @@ class SetMaterialParamsOperator(bpy.types.Operator):
             sub_split.operator("material.reset_material", text="-").index = i
             # Color toggle with reset
             col_prop = f"color_id_{i}"
-            col_id = mesh[col_prop]
+            col_id = mesh.get(col_prop, 0)
             col_item = next((c for c in MATERIAL_OPTIONS["colors"] if c["id"] == col_id), {"name": "None"})
             sub = sub.split(factor=0.9, align=True)
             sub.operator("material.select_toggle", text=col_item["name"], depress=context.scene.get(f"toggle_{col_prop}", False)).prop_name = col_prop
@@ -544,7 +578,7 @@ class SetMaterialParamsOperator(bpy.types.Operator):
                             context.scene, "modal_options_index", rows=rows)
 
     def execute(self, context):
-        active_mesh = context.mesh
+        active_mesh = context.active_object.data if context.active_object and context.active_object.type == 'MESH' else None
         if active_mesh:
             for obj in context.selected_objects:
                 if obj.type == 'MESH' and obj.data:
@@ -579,8 +613,8 @@ class SetMaterialParamsOperator(bpy.types.Operator):
 # UI List for modal options
 class MODAL_OPTIONS_UL_options(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        mesh = context.mesh
-        active_id = mesh[context.scene.active_property] if mesh and context.scene.active_property else 0
+        mesh = context.active_object.data if context.active_object and context.active_object.type == 'MESH' else None
+        active_id = mesh.get(context.scene.active_property, 0) if mesh and context.scene.active_property else 0
         split = layout.split(factor=0.85, align=True)
         op = split.operator("material.assign_id", text=item.name, depress=(item.id == active_id), emboss=True)
         op.item_id = item.id
@@ -814,21 +848,11 @@ def register_material_items():
                 default=default
             ))
 
-# Custom panel for buttons in Object Data Properties
-class COLOR_PALETTE_PT_buttons(bpy.types.Panel):
-    bl_label = "Color Palette"
-    bl_idname = "PT_ColorPaletteButtons"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "data"
-    bl_parent_id = "DATA_PT_context_mesh"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-        row = layout.row()
-        row.operator("object.edit_materials", text="Edit Materials")
-        row.operator("object.set_material_params", text="Set Parameters")
+# Function to draw buttons in 3D Viewport Header
+def draw_buttons(self, context):
+    layout = self.layout
+    layout.operator("object.edit_materials", icon='SETTINGS', text="")
+    layout.operator("object.set_material_params", icon='BRUSH_DATA', text="")
 
 # Handler for auto-sync after loading a .blend file
 @persistent
@@ -844,7 +868,6 @@ def register():
     MATERIAL_OPTIONS = load_material_options()
     register_properties()
     register_material_items()
-    bpy.utils.register_class(COLOR_PALETTE_PT_buttons)
     bpy.utils.register_class(SyncMaterialColorsOperator)
     bpy.utils.register_class(ResetMaterialOperator)
     bpy.utils.register_class(ResetColorOperator)
@@ -858,6 +881,7 @@ def register():
     bpy.utils.register_class(DeleteMaterialOperator)
     bpy.utils.register_class(CopyMaterialOperator)
     bpy.utils.register_class(SelectToggleOperator)
+    bpy.types.VIEW3D_HT_header.append(draw_buttons)
     if auto_sync_post_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(auto_sync_post_load)
 
@@ -865,7 +889,6 @@ def register():
 def unregister():
     if auto_sync_post_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(auto_sync_post_load)
-    bpy.utils.unregister_class(COLOR_PALETTE_PT_buttons)
     bpy.utils.unregister_class(SyncMaterialColorsOperator)
     bpy.utils.unregister_class(ResetMaterialOperator)
     bpy.utils.unregister_class(ResetColorOperator)
@@ -880,6 +903,7 @@ def unregister():
     bpy.utils.unregister_class(CopyMaterialOperator)
     bpy.utils.unregister_class(SelectToggleOperator)
     bpy.utils.unregister_class(MaterialItem)
+    bpy.types.VIEW3D_HT_header.remove(draw_buttons)
     del bpy.types.Scene.material_items
     del bpy.types.Scene.modal_options
     del bpy.types.Scene.material_index
