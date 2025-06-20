@@ -9,78 +9,82 @@ from collections import defaultdict
 bl_info = {
     "name": "Distribute Objects",
     "author": "Your Name",
-    "version": (2, 18),
+    "version": (2, 20),
     "blender": (4, 4, 0),
     "location": "Object > Distribute Objects or Search > Distribute Objects",
-    "description": "Distributes selected objects in rows with central object at origin",
+    "description": "Distributes selected objects in rows with central object at origin, handling parent-child hierarchies",
     "category": "Object",
 }
 
+def get_child_objects(obj, objects=None):
+    """Рекурсивно собирает все дочерние объекты."""
+    if objects is None:
+        objects = []
+    if obj not in objects:
+        objects.append(obj)
+    for child in obj.children:
+        get_child_objects(child, objects)
+    return objects
+
 def get_object_size(obj):
-    """Calculate the size and bounding box center of an object, including its children and Mirror modifier."""
-    mesh_objects = [obj] if obj.type == 'MESH' else []
-    for child in obj.children_recursive:
-        if child.type == 'MESH':
-            mesh_objects.append(child)
-    
-    # Check for Mirror modifier on the object
-    mirror_mod = None
-    if obj.type == 'MESH':
-        for mod in obj.modifiers:
-            if mod.type == 'MIRROR' and mod.show_viewport:
-                mirror_mod = mod
-                break
+    """Calculate the size and bounding box center of an object, including its children and modifiers."""
+    # Собираем родительский объект и все его дочерние объекты
+    mesh_objects = [o for o in get_child_objects(obj) if o.type == 'MESH']
     
     if not mesh_objects:
-        # Handle non-mesh objects without children
+        # Если нет мешей, возвращаем размеры объекта
         dims = [max(obj.dimensions)] * 3
-        if mirror_mod:
-            if mirror_mod.use_axis[0]:
-                dims[0] *= 2  # Double width for X mirror
-            if mirror_mod.use_axis[1]:
-                dims[1] *= 2  # Double depth for Y mirror
-            if mirror_mod.use_axis[2]:
-                dims[2] *= 2  # Double height for Z mirror
-        center_x = center_y = 0.0
-        return dims[0], dims[1], dims[2], 0.0, 0.0, 0.0, dims[2], dims[2] / 2
+        center_x = center_y = center_z = 0.0
+        min_z = -dims[2] / 2
+        max_z = dims[2] / 2
+        return dims[0], dims[1], dims[2], center_x, center_y, min_z, max_z, center_z
     
-    all_bbox = []
+    # Получаем контекст для вычисления геометрии с модификаторами
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    
+    # Инициализация min/max координат
+    min_coords = Vector((float('inf'), float('inf'), float('inf')))
+    max_coords = Vector((-float('inf'), -float('inf'), -float('inf')))
+    
     for mesh_obj in mesh_objects:
-        # Get bounding box in world space
-        bbox = [mesh_obj.matrix_world @ Vector(corner) for corner in mesh_obj.bound_box]
+        # Получаем геометрию с учетом модификаторов
+        eval_obj = mesh_obj.evaluated_get(depsgraph)
+        mesh = eval_obj.to_mesh(preserve_all_data_layers=False, depsgraph=depsgraph)
         
-        # Apply Mirror modifier effect if present
-        mirror_mod = None
-        for mod in mesh_obj.modifiers:
-            if mod.type == 'MIRROR' and mod.show_viewport:
-                mirror_mod = mod
-                break
+        # Получаем вершины в мировых координатах
+        matrix = mesh_obj.matrix_world
+        for vert in mesh.vertices:
+            world_vert = matrix @ vert.co
+            min_coords.x = min(min_coords.x, world_vert.x)
+            min_coords.y = min(min_coords.y, world_vert.y)
+            min_coords.z = min(min_coords.z, world_vert.z)
+            max_coords.x = max(max_coords.x, world_vert.x)
+            max_coords.y = max(max_coords.y, world_vert.y)
+            max_coords.z = max(max_coords.z, world_vert.z)
         
-        if mirror_mod:
-            mirrored_bbox = []
-            for point in bbox:
-                mirrored_point = point.copy()
-                if mirror_mod.use_axis[0]:
-                    mirrored_point.x = -point.x
-                    mirrored_bbox.append(mirrored_point)
-                if mirror_mod.use_axis[1]:
-                    mirrored_point.y = -point.y
-                    mirrored_bbox.append(mirrored_point)
-                if mirror_mod.use_axis[2]:
-                    mirrored_point.z = -point.z
-                    mirrored_bbox.append(mirrored_point)
-            bbox.extend(mirrored_bbox)
-        
-        all_bbox.extend(bbox)
+        # Очищаем временный меш
+        eval_obj.to_mesh_clear()
     
-    width = max(v.x for v in all_bbox) - min(v.x for v in all_bbox)
-    depth = max(v.y for v in all_bbox) - min(v.y for v in all_bbox)
-    height = max(v.z for v in all_bbox) - min(v.z for v in all_bbox)
-    min_z = min(v.z for v in all_bbox)
-    max_z = max(v.z for v in all_bbox)
-    center_x = (max(v.x for v in all_bbox) + min(v.x for v in all_bbox)) / 2
-    center_y = (max(v.y for v in all_bbox) + min(v.y for v in all_bbox)) / 2
-    center_z = (min_z + max_z) / 2
+    # Вычисляем размеры
+    width = max_coords.x - min_coords.x
+    depth = max_coords.y - min_coords.y
+    height = max_coords.z - min_coords.z
+    
+    # Вычисляем центр bounding box в мировых координатах
+    center_world = (max_coords + min_coords) / 2
+    
+    # Преобразуем центр в локальные координаты относительно obj.location
+    matrix_inv = obj.matrix_world.inverted()
+    center_local = matrix_inv @ center_world
+    center_x = center_local.x
+    center_y = center_local.y
+    center_z = center_local.z
+    
+    # Вычисляем min_z и max_z в локальных координатах
+    min_z_world = min_coords.z
+    max_z_world = max_coords.z
+    min_z = (matrix_inv @ Vector((0, 0, min_z_world))).z
+    max_z = (matrix_inv @ Vector((0, 0, max_z_world))).z
     
     return width, depth, height, center_x, center_y, min_z, max_z, center_z
 
