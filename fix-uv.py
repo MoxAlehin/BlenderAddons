@@ -63,17 +63,10 @@ class OBJECT_OT_FixUV(Operator):
                 uv_layers.active_index = 1  # Set Gradients as active for display
                 continue
 
-            # Store data of the first and second UV channels before any modifications
-            first_uv_data = None
-            first_uv_name = None
-            second_uv_data = None
-            second_uv_name = None
-            if len(uv_layers) > 0:
-                first_uv_name = uv_layers[0].name
-                first_uv_data = [(uv.uv[0], uv.uv[1]) for uv in uv_layers[0].data]
-                if len(uv_layers) > 1:
-                    second_uv_name = uv_layers[1].name
-                    second_uv_data = [(uv.uv[0], uv.uv[1]) for uv in uv_layers[1].data]
+            # Store data of ALL UV channels before any modifications
+            temp_uv_data = {}
+            for layer in uv_layers:
+                temp_uv_data[layer.name] = [(uv.uv[0], uv.uv[1]) for uv in layer.data]
 
             # Create or configure UV channels
             if len(uv_layers) == 0:
@@ -82,26 +75,19 @@ class OBJECT_OT_FixUV(Operator):
                 gradients_layer = uv_layers.new(name="Gradients")
             else:
                 # UV channels exist
-                if first_uv_name != "Unwrap":
-                    # Rename the first channel to Gradients
+                if uv_layers[0].name != "Unwrap":
+                    # Rename the first channel to Gradients if it's not Unwrap
                     uv_layers[0].name = "Gradients"
                 else:
                     # Create Gradients if the first channel is Unwrap
                     uv_layers.new(name="Gradients")
-                    if second_uv_data:
-                        # Use second UV channel's data for Gradients
+                    if len(uv_layers) > 1 and uv_layers[1].name in temp_uv_data:
+                        # Copy data to Gradients from the original second channel
                         gradients_layer = uv_layers[1]
-                        for i, uv_coord in enumerate(second_uv_data):
+                        for i, uv_coord in enumerate(temp_uv_data[uv_layers[1].name]):
                             gradients_layer.data[i].uv = uv_coord
                 # Ensure Gradients exists
                 gradients_layer = next(layer for layer in uv_layers if layer.name == "Gradients")
-
-            # Store data of Gradients and second UV map for reordering
-            temp_uv_data = {}
-            if gradients_layer:
-                temp_uv_data["Gradients"] = [(uv.uv[0], uv.uv[1]) for uv in gradients_layer.data]
-            if second_uv_name and second_uv_name not in ["Unwrap", "Gradients"]:
-                temp_uv_data[second_uv_name] = second_uv_data
 
             # Clear all UV channels
             while len(uv_layers) > 0:
@@ -115,16 +101,18 @@ class OBJECT_OT_FixUV(Operator):
             if "Gradients" in temp_uv_data:
                 for i, uv_coord in enumerate(temp_uv_data["Gradients"]):
                     gradients_layer.data[i].uv = uv_coord
-            elif first_uv_data:
-                # Use data from the original first UV channel
-                for i, uv_coord in enumerate(first_uv_data):
+            elif len(temp_uv_data) > 0:
+                # Use data from the first UV channel if Gradients data is not available
+                first_key = list(temp_uv_data.keys())[0]
+                for i, uv_coord in enumerate(temp_uv_data[first_key]):
                     gradients_layer.data[i].uv = uv_coord
 
-            # Restore the second UV map if it exists
-            if second_uv_name and second_uv_name not in ["Unwrap", "Gradients"]:
-                second_layer = uv_layers.new(name=second_uv_name)
-                for i, uv_coord in enumerate(temp_uv_data[second_uv_name]):
-                    second_layer.data[i].uv = uv_coord
+            # Restore all other UV channels
+            for uv_name in temp_uv_data:
+                if uv_name not in ["Unwrap", "Gradients"]:
+                    new_layer = uv_layers.new(name=uv_name)
+                    for i, uv_coord in enumerate(temp_uv_data[uv_name]):
+                        new_layer.data[i].uv = uv_coord
 
             # Set active_render: disable for all except Gradients
             for layer in uv_layers:
