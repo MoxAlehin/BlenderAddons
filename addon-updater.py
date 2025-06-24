@@ -1,6 +1,7 @@
 import bpy
 import os
 import shutil
+import json
 from bpy.types import Operator, AddonPreferences, PropertyGroup
 from bpy.props import StringProperty, CollectionProperty, BoolProperty
 from bpy_extras.io_utils import ImportHelper
@@ -17,6 +18,25 @@ class AddonUpdaterItem(PropertyGroup):
         description="Module name of the addon",
     )
 
+# Получение пути к JSON-файлу конфигурации
+def get_config_path():
+    addon_dir = os.path.dirname(__file__)
+    return os.path.join(addon_dir, "addon_updater_config.json")
+
+# Чтение конфигурации из JSON
+def load_config():
+    config_path = get_config_path()
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+# Сохранение конфигурации в JSON
+def save_config(addons):
+    config_path = get_config_path()
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(addons, f, indent=4)
+
 # Оператор для добавления нового плагина в список отслеживания
 class ADDON_UPDATER_OT_AddAddon(Operator, ImportHelper):
     bl_idname = "addon_updater.add_addon"
@@ -26,11 +46,20 @@ class ADDON_UPDATER_OT_AddAddon(Operator, ImportHelper):
     filter_glob: StringProperty(default="*.py", options={'HIDDEN'})
 
     def execute(self, context):
+        addons = load_config()
+        new_addon = {
+            "path": self.filepath,
+            "module_name": os.path.splitext(os.path.basename(self.filepath))[0]
+        }
+        addons.append(new_addon)
+        save_config(addons)
+        # Обновляем временную коллекцию для UI
         preferences = context.preferences.addons[__name__].preferences
-        item = preferences.addons.add()
-        item.path = self.filepath
-        # Автоматически заполняем имя модуля на основе имени файла
-        item.module_name = os.path.splitext(os.path.basename(self.filepath))[0]
+        preferences.addons.clear()
+        for addon in addons:
+            item = preferences.addons.add()
+            item.path = addon["path"]
+            item.module_name = addon["module_name"]
         return {'FINISHED'}
 
 # Оператор для удаления плагина из списка отслеживания
@@ -42,8 +71,17 @@ class ADDON_UPDATER_OT_RemoveAddon(Operator):
     index: bpy.props.IntProperty()
 
     def execute(self, context):
+        addons = load_config()
+        if 0 <= self.index < len(addons):
+            addons.pop(self.index)
+            save_config(addons)
+        # Обновляем временную коллекцию для UI
         preferences = context.preferences.addons[__name__].preferences
-        preferences.addons.remove(self.index)
+        preferences.addons.clear()
+        for addon in addons:
+            item = preferences.addons.add()
+            item.path = addon["path"]
+            item.module_name = addon["module_name"]
         return {'FINISHED'}
 
 # Оператор для обновления всех отслеживаемых плагинов
@@ -53,14 +91,14 @@ class ADDON_UPDATER_OT_UpdatePlugins(Operator):
     bl_description = "Check and update tracked addons if newer versions are available"
 
     def execute(self, context):
-        preferences = context.preferences.addons[__name__].preferences
+        addons = load_config()
         addons_dir = bpy.utils.user_resource('SCRIPTS', path="addons")
         updated_count = 0
         errors = []
 
-        for item in preferences.addons:
-            local_path = item.path
-            module_name = item.module_name
+        for item in addons:
+            local_path = item["path"]
+            module_name = item["module_name"]
 
             # Проверка существования локального файла
             if not os.path.isfile(local_path):
@@ -122,6 +160,14 @@ class AddonUpdaterPreferences(AddonPreferences):
         layout = self.layout
         layout.prop(self, "auto_update")
 
+        # Загружаем конфигурацию и синхронизируем с UI
+        addons = load_config()
+        self.addons.clear()
+        for addon in addons:
+            item = self.addons.add()
+            item.path = addon["path"]
+            item.module_name = addon["module_name"]
+
         box = layout.box()
         box.label(text="Tracked Addons:")
         for i, item in enumerate(self.addons):
@@ -147,6 +193,17 @@ def register():
     bpy.utils.register_class(ADDON_UPDATER_OT_RemoveAddon)
     bpy.utils.register_class(ADDON_UPDATER_OT_UpdatePlugins)
     bpy.utils.register_class(AddonUpdaterPreferences)
+
+    # Загружаем конфигурацию при регистрации
+    preferences = bpy.context.preferences.addons.get(__name__)
+    if preferences:
+        addons = load_config()
+        preferences = preferences.preferences
+        preferences.addons.clear()
+        for addon in addons:
+            item = preferences.addons.add()
+            item.path = addon["path"]
+            item.module_name = addon["module_name"]
 
     # Регистрация горячей клавиши
     wm = bpy.context.window_manager
@@ -192,9 +249,9 @@ if __name__ == "__main__":
 bl_info = {
     "name": "Local Addon Updater",
     "author": "Your Name",
-    "version": (1, 0),
+    "version": (1, 1),
     "blender": (2, 80, 0),
     "location": "Preferences > Add-ons",
-    "description": "Tracks and updates local .py addons based on file modification time",
+    "description": "Tracks and updates local .py addons based on file modification time with JSON config",
     "category": "System",
 }
