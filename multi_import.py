@@ -5,7 +5,6 @@ bl_info = {
     "blender": (2, 80, 0),
     "version": (1, 2),
     "category": "Import-Export",
-    "doc_url": "https://github.com/MoxAlehin/Blender-Addons/tree/master?tab=readme-ov-file#multi-import",
     "location": "File > Import",
 }
 

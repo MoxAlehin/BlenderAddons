@@ -3,7 +3,7 @@ bl_info = {
     "blender": (4, 4, 0),
     "category": "Mesh",
     "author": "Your Name",
-    "version": (1, 0, 0),
+    "version": (1, 0),
     "description": "Select coplanar faces and dissolve them into n-gon",
 }
 
